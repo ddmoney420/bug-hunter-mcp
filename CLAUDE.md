@@ -1,5 +1,57 @@
 # Claude Code Agent Instructions for Chant
 
+## Tools Available
+
+### moji - ASCII Art & Kaomoji CLI
+
+Location: `~/go/bin/moji`
+
+Use `moji` for generating ASCII art banners and kaomoji in documentation, guides, and terminal output.
+
+#### Banner Generation
+```bash
+# Basic banner
+moji banner "TEXT"
+
+# With font (shadow has chunky block letters)
+moji banner "TEXT" --font shadow
+moji banner "TEXT" --font slant
+moji banner "TEXT" --font block
+
+# With borders
+moji banner "TEXT" --border bold    # thick lines
+moji banner "TEXT" --border double  # double lines
+moji banner "TEXT" --border round   # rounded corners
+moji banner "TEXT" --border stars   # asterisks
+
+# Combined (recommended for headers)
+moji banner "HEADER" --font shadow --border bold
+```
+
+#### Kaomoji
+```bash
+# Common ones
+moji shrug         # ¯\_(ツ)_/¯
+moji tableflip     # (╯°□°)╯︵ ┻━┻
+moji lenny         # ( ͡° ͜ʖ ͡°)
+moji cool          # (⌐■_■)
+moji magic         # (ノ◕ヮ◕)ノ*:・゚✧
+moji flex          # ᕦ(ò_óˇ)ᕤ
+moji bear          # ʕ•ᴥ•ʔ
+moji cat           # (=^･ω･^=)
+moji fire          # (◣_◢)🔥🔥🔥
+moji sparkle       # (ﾉ◕ヮ◕)ﾉ*:・゚✧
+moji list          # List all available kaomoji
+```
+
+#### When to Use moji
+- Creating documentation headers and section banners
+- Adding personality to guides and READMEs
+- Terminal welcome messages
+- Spec files and completion celebrations
+
+---
+
 ## Overview
 
 Claude Code is an AI-powered coding assistant that helps implement specifications for the Chant project. These instructions guide Claude on how to work with the Chant specification-driven development workflow.
