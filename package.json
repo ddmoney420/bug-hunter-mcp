@@ -1,7 +1,7 @@
 {
   "name": "bug-hunter-mcp",
-  "version": "1.0.0",
-  "description": "MCP server for hunting and solving open source issues",
+  "version": "2.0.0",
+  "description": "MCP server for hunting and solving open source issues. Powered by Chant (spec-driven development) and Moji (terminal styling).",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
@@ -14,10 +14,31 @@
     "mcp",
     "github",
     "opensource",
-    "contributions"
+    "contributions",
+    "chant",
+    "moji",
+    "spec-driven",
+    "ai-agents",
+    "kaomoji"
   ],
   "author": "ddmoney420",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ddmoney420/bug-hunter-mcp"
+  },
+  "credits": {
+    "chant": {
+      "description": "Spec-driven development platform",
+      "url": "https://github.com/lex00/chant",
+      "author": "lex00"
+    },
+    "moji": {
+      "description": "Terminal styling and kaomojis",
+      "url": "https://github.com/ddmoney420/moji",
+      "author": "ddmoney420"
+    }
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^0.5.0",
     "@octokit/rest": "^20.0.0"

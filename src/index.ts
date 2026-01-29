@@ -4,6 +4,7 @@
  * Bug Hunter MCP Server
  *
  * An MCP server that helps you find and solve open source issues.
+ * Integrates with Chant for spec-driven development and Moji for styled output.
  *
  * Tools:
  * - hunt_issues: Find good first issues matching your skills
@@ -11,6 +12,17 @@
  * - scaffold_solution: Generate starter implementation for an issue
  * - claim_issue: Comment on an issue to claim it
  * - generate_chant_spec: Generate a Chant driver spec from an issue
+ * - chant_init: Initialize Chant in a repository
+ * - chant_list: List Chant specs in a repository
+ * - chant_show: Show details of a Chant spec
+ * - research_workflow: Run the full Chant research workflow
+ *
+ * Credits:
+ * - Chant (https://github.com/lex00/chant) - Spec-driven development platform
+ * - Moji (https://github.com/ddmoney420/moji) - Terminal styling and kaomojis
+ *
+ * @author ddmoney420
+ * @license MIT
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -28,6 +40,10 @@ import * as path from "path";
 
 const execAsync = promisify(exec);
 
+// =============================================================================
+// Configuration
+// =============================================================================
+
 // Initialize GitHub client (uses GITHUB_TOKEN env var if available)
 const octokit = new Octokit({
   auth: process.env.GITHUB_TOKEN,
@@ -35,6 +51,60 @@ const octokit = new Octokit({
 
 // Base directory for cloned repos
 const REPOS_DIR = path.join(process.env.HOME || "~", "Developer", "bug-hunter-repos");
+
+/**
+ * Chant Integration
+ * https://github.com/lex00/chant - Spec-driven development platform
+ */
+const CHANT_BIN = process.env.CHANT_BIN || path.join(process.env.HOME || "~", "Developer", "chant", "target", "release", "chant");
+
+/**
+ * Moji Integration
+ * https://github.com/ddmoney420/moji - Terminal styling and kaomojis
+ */
+const MOJI_BIN = process.env.MOJI_BIN || "moji";
+
+// =============================================================================
+// Moji Helpers - Styled Output (https://github.com/ddmoney420/moji)
+// =============================================================================
+
+/** Get a kaomoji by name */
+function kaomoji(name: string): string {
+  try {
+    return execSync(`${MOJI_BIN} ${name}`, { encoding: "utf-8" }).trim();
+  } catch {
+    // Fallback kaomojis if moji not available
+    const fallbacks: Record<string, string> = {
+      happy: "(◕‿◕)",
+      cool: "(⌐■_■)",
+      magic: "(ノ◕ヮ◕)ノ*:・゚✧",
+      shrug: "¯\\_(ツ)_/¯",
+      success: "✓",
+      error: "✗",
+      thinking: "(°ヘ°)?",
+      celebrate: "ヽ(°〇°)ノ",
+    };
+    return fallbacks[name] || "";
+  }
+}
+
+/** Generate ASCII banner (moji banner) */
+function banner(text: string, font: string = "small"): string {
+  try {
+    return execSync(`${MOJI_BIN} banner "${text}" --font ${font}`, { encoding: "utf-8" });
+  } catch {
+    return `=== ${text} ===`;
+  }
+}
+
+/** Apply gradient to text */
+function gradient(text: string, style: string = "neon"): string {
+  try {
+    return execSync(`echo "${text}" | ${MOJI_BIN} gradient --style ${style}`, { encoding: "utf-8" });
+  } catch {
+    return text;
+  }
+}
 
 // Ensure repos directory exists
 if (!fs.existsSync(REPOS_DIR)) {
@@ -192,6 +262,119 @@ Use with 'chant split' to break into focused sub-specs, then 'chant work' to exe
         output_dir: {
           type: "string",
           description: "Optional: output directory for the spec (default: .chant/specs in repo)",
+        },
+      },
+      required: ["repo", "issue_number"],
+    },
+  },
+  // =========================================================================
+  // Chant Tools (https://github.com/lex00/chant)
+  // =========================================================================
+  {
+    name: "chant_init",
+    description: `Initialize Chant in a repository for spec-driven development.
+
+Sets up the .chant/ directory structure with config, prompts, and specs folders.
+Use this after cloning a repo to enable the Chant workflow.
+
+Chant: https://github.com/lex00/chant`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        repo: {
+          type: "string",
+          description: "Repository in 'owner/repo' format",
+        },
+        agent: {
+          type: "string",
+          description: "Agent type to configure (default: 'claude')",
+        },
+        force: {
+          type: "boolean",
+          description: "Force reinitialization if already initialized",
+        },
+      },
+      required: ["repo"],
+    },
+  },
+  {
+    name: "chant_list",
+    description: `List all Chant specs in a repository.
+
+Shows spec IDs, titles, and status (pending, in_progress, completed).
+Filter by status, type, or labels.
+
+Chant: https://github.com/lex00/chant`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        repo: {
+          type: "string",
+          description: "Repository in 'owner/repo' format",
+        },
+        status: {
+          type: "string",
+          description: "Filter by status: pending, in_progress, completed",
+        },
+        type: {
+          type: "string",
+          description: "Filter by type: code, task, driver, research",
+        },
+        label: {
+          type: "string",
+          description: "Filter by label",
+        },
+      },
+      required: ["repo"],
+    },
+  },
+  {
+    name: "chant_show",
+    description: `Show details of a specific Chant spec.
+
+Displays the full spec content including acceptance criteria, target files, and status.
+
+Chant: https://github.com/lex00/chant`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        repo: {
+          type: "string",
+          description: "Repository in 'owner/repo' format",
+        },
+        spec_id: {
+          type: "string",
+          description: "The spec ID to show",
+        },
+      },
+      required: ["repo", "spec_id"],
+    },
+  },
+  {
+    name: "research_workflow",
+    description: `Run the full Chant research workflow for an issue.
+
+Creates a research spec to investigate the codebase, then generates an implementation spec.
+This follows Chant's enterprise research workflow pattern:
+1. Research phase - Analyze codebase, document findings
+2. Implementation phase - Execute based on research
+
+Chant: https://github.com/lex00/chant`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        repo: {
+          type: "string",
+          description: "Repository in 'owner/repo' format",
+        },
+        issue_number: {
+          type: "number",
+          description: "GitHub issue number to research and implement",
+        },
+        research_questions: {
+          type: "array",
+          items: { type: "string" },
+          description: "Specific questions to answer during research phase",
         },
       },
       required: ["repo", "issue_number"],
@@ -700,6 +883,312 @@ function extractTargetFiles(issueBody: string, projectType: string): string[] {
   return files.slice(0, 10); // Limit to 10 files
 }
 
+// =============================================================================
+// Chant Tool Implementations (https://github.com/lex00/chant)
+// =============================================================================
+
+/**
+ * Initialize Chant in a repository
+ */
+async function chantInit(params: {
+  repo: string;
+  agent?: string;
+  force?: boolean;
+}): Promise<string> {
+  const { repo, agent = "claude", force = false } = params;
+  const [owner, repoName] = repo.split("/");
+  const repoDir = path.join(REPOS_DIR, owner, repoName);
+
+  let result = `${banner("CHANT INIT")}\n`;
+  result += `${kaomoji("magic")} Initializing Chant in ${repo}\n\n`;
+
+  try {
+    // Ensure repo is cloned
+    if (!fs.existsSync(repoDir)) {
+      result += `${kaomoji("thinking")} Repository not found locally. Cloning first...\n`;
+      fs.mkdirSync(path.dirname(repoDir), { recursive: true });
+      execSync(`git clone --depth 1 https://github.com/${repo}.git ${repoDir}`, {
+        stdio: "pipe",
+      });
+      result += `${kaomoji("success")} Cloned to: ${repoDir}\n\n`;
+    }
+
+    // Run chant init
+    const forceFlag = force ? "--force" : "";
+    const cmd = `cd "${repoDir}" && ${CHANT_BIN} init --agent ${agent} ${forceFlag}`;
+
+    try {
+      const output = execSync(cmd, { encoding: "utf-8", stdio: "pipe" });
+      result += `${kaomoji("success")} Chant initialized!\n\n`;
+      result += output;
+    } catch (error: any) {
+      if (error.stdout) {
+        result += error.stdout;
+      }
+      if (error.stderr && !error.stderr.includes("already initialized")) {
+        result += `\n${kaomoji("error")} ${error.stderr}`;
+      }
+    }
+
+    result += `\n## Next Steps ${kaomoji("cool")}\n`;
+    result += `1. \`cd ${repoDir}\`\n`;
+    result += `2. \`chant add "description"\` - Create a spec\n`;
+    result += `3. \`chant work <spec-id>\` - Execute a spec\n`;
+
+    return result;
+  } catch (error: any) {
+    return `${kaomoji("error")} Error initializing chant: ${error.message}`;
+  }
+}
+
+/**
+ * List Chant specs in a repository
+ */
+async function chantList(params: {
+  repo: string;
+  status?: string;
+  type?: string;
+  label?: string;
+}): Promise<string> {
+  const { repo, status, type, label } = params;
+  const [owner, repoName] = repo.split("/");
+  const repoDir = path.join(REPOS_DIR, owner, repoName);
+
+  let result = `${banner("CHANT SPECS")}\n`;
+  result += `${kaomoji("happy")} Specs in ${repo}\n\n`;
+
+  try {
+    if (!fs.existsSync(repoDir)) {
+      return `${kaomoji("error")} Repository not cloned. Run analyze_repo or chant_init first.`;
+    }
+
+    // Build command with filters
+    let cmd = `cd "${repoDir}" && ${CHANT_BIN} list`;
+    if (status) cmd += ` --status ${status}`;
+    if (type) cmd += ` --type ${type}`;
+    if (label) cmd += ` --label ${label}`;
+
+    try {
+      const output = execSync(cmd, { encoding: "utf-8", stdio: "pipe" });
+      if (output.includes("No specs")) {
+        result += `${kaomoji("shrug")} No specs found.\n\n`;
+        result += `Create one with: \`chant add "description"\`\n`;
+      } else {
+        result += output;
+      }
+    } catch (error: any) {
+      if (error.stdout) {
+        result += error.stdout;
+      } else {
+        result += `${kaomoji("error")} ${error.message}`;
+      }
+    }
+
+    return result;
+  } catch (error: any) {
+    return `${kaomoji("error")} Error listing specs: ${error.message}`;
+  }
+}
+
+/**
+ * Show details of a Chant spec
+ */
+async function chantShow(params: {
+  repo: string;
+  spec_id: string;
+}): Promise<string> {
+  const { repo, spec_id } = params;
+  const [owner, repoName] = repo.split("/");
+  const repoDir = path.join(REPOS_DIR, owner, repoName);
+
+  let result = `${banner("SPEC")}\n`;
+
+  try {
+    if (!fs.existsSync(repoDir)) {
+      return `${kaomoji("error")} Repository not cloned. Run analyze_repo or chant_init first.`;
+    }
+
+    const cmd = `cd "${repoDir}" && ${CHANT_BIN} show ${spec_id}`;
+
+    try {
+      const output = execSync(cmd, { encoding: "utf-8", stdio: "pipe" });
+      result += output;
+    } catch (error: any) {
+      if (error.stdout) {
+        result += error.stdout;
+      } else {
+        result += `${kaomoji("error")} Spec not found: ${spec_id}`;
+      }
+    }
+
+    return result;
+  } catch (error: any) {
+    return `${kaomoji("error")} Error showing spec: ${error.message}`;
+  }
+}
+
+/**
+ * Run the full Chant research workflow for an issue
+ * https://github.com/lex00/chant/tree/main/docs/guides/enterprise/research-workflow
+ */
+async function researchWorkflow(params: {
+  repo: string;
+  issue_number: number;
+  research_questions?: string[];
+}): Promise<string> {
+  const { repo, issue_number, research_questions = [] } = params;
+  const [owner, repoName] = repo.split("/");
+  const repoDir = path.join(REPOS_DIR, owner, repoName);
+
+  let result = `${banner("RESEARCH WORKFLOW")}\n`;
+  result += `${kaomoji("magic")} Starting research workflow for ${repo}#${issue_number}\n\n`;
+
+  try {
+    // Ensure repo is cloned and chant initialized
+    if (!fs.existsSync(repoDir)) {
+      result += `${kaomoji("thinking")} Cloning repository...\n`;
+      fs.mkdirSync(path.dirname(repoDir), { recursive: true });
+      execSync(`git clone --depth 1 https://github.com/${repo}.git ${repoDir}`, {
+        stdio: "pipe",
+      });
+    }
+
+    // Initialize chant if needed
+    const chantDir = path.join(repoDir, ".chant");
+    if (!fs.existsSync(chantDir)) {
+      result += `${kaomoji("thinking")} Initializing Chant...\n`;
+      execSync(`cd "${repoDir}" && ${CHANT_BIN} init --agent claude`, { stdio: "pipe" });
+    }
+
+    // Fetch issue details
+    const issue = await octokit.issues.get({
+      owner,
+      repo: repoName,
+      issue_number,
+    });
+
+    const issueTitle = issue.data.title;
+    const issueBody = issue.data.body || "";
+    const issueUrl = issue.data.html_url;
+
+    // Generate research spec ID
+    const dateStr = new Date().toISOString().split("T")[0];
+    const researchId = `${dateStr}-research-${issue_number}`;
+    const implId = `${dateStr}-impl-${issue_number}`;
+
+    // Build research questions
+    const defaultQuestions = [
+      "What files are most relevant to this issue?",
+      "What patterns/conventions does the codebase use?",
+      "What edge cases need to be handled?",
+      "What tests should be added?",
+    ];
+    const questions = research_questions.length > 0 ? research_questions : defaultQuestions;
+
+    // Create research spec
+    const researchSpec = `---
+type: research
+status: pending
+labels:
+- issue-${issue_number}
+- research
+informed_by:
+- src/
+target_files:
+- RESEARCH_${issue_number}.md
+---
+# Research: ${issueTitle}
+
+GitHub Issue: [${repo}#${issue_number}](${issueUrl})
+
+## Mission ${kaomoji("magic")}
+
+Investigate the codebase to understand how to implement this issue.
+
+## Research Questions
+
+${questions.map(q => `- [ ] ${q}`).join("\n")}
+
+## Issue Context
+
+${issueBody.slice(0, 1500)}${issueBody.length > 1500 ? "\n\n...(truncated)" : ""}
+
+## Methodology
+
+1. Explore relevant directories and files
+2. Analyze existing patterns and conventions
+3. Document findings in RESEARCH_${issue_number}.md
+4. Propose implementation approach
+
+## Acceptance Criteria
+
+- [ ] All research questions answered
+- [ ] Relevant files identified and documented
+- [ ] Implementation approach proposed
+- [ ] Research findings written to RESEARCH_${issue_number}.md
+`;
+
+    // Create implementation spec (depends on research)
+    const implSpec = `---
+type: code
+status: pending
+depends_on:
+- ${researchId}
+labels:
+- issue-${issue_number}
+- implementation
+---
+# Implement: ${issueTitle}
+
+GitHub Issue: [${repo}#${issue_number}](${issueUrl})
+
+## Background
+
+This spec implements the solution based on research findings in \`${researchId}\`.
+
+## Implementation Plan
+
+(To be filled after research phase completes)
+
+## Acceptance Criteria
+
+- [ ] Implementation complete per research findings
+- [ ] All existing tests pass
+- [ ] New tests added
+- [ ] Code follows project conventions
+`;
+
+    // Write specs
+    const specsDir = path.join(repoDir, ".chant", "specs");
+    fs.mkdirSync(specsDir, { recursive: true });
+
+    const researchPath = path.join(specsDir, `${researchId}.md`);
+    const implPath = path.join(specsDir, `${implId}.md`);
+
+    fs.writeFileSync(researchPath, researchSpec);
+    fs.writeFileSync(implPath, implSpec);
+
+    result += `${kaomoji("success")} Created research workflow specs!\n\n`;
+    result += `## Phase 1: Research ${kaomoji("thinking")}\n`;
+    result += `**Spec:** ${researchId}\n`;
+    result += `**File:** ${researchPath}\n\n`;
+    result += `## Phase 2: Implementation ${kaomoji("cool")}\n`;
+    result += `**Spec:** ${implId}\n`;
+    result += `**File:** ${implPath}\n`;
+    result += `**Depends on:** ${researchId}\n\n`;
+    result += `## Next Steps ${kaomoji("celebrate")}\n`;
+    result += `1. \`cd ${repoDir}\`\n`;
+    result += `2. \`chant work ${researchId}\` - Run research phase\n`;
+    result += `3. Review findings in RESEARCH_${issue_number}.md\n`;
+    result += `4. \`chant work ${implId}\` - Run implementation phase\n`;
+    result += `5. Submit PR!\n`;
+
+    return result;
+  } catch (error: any) {
+    return `${kaomoji("error")} Error in research workflow: ${error.message}`;
+  }
+}
+
 /**
  * Detect project type from repo contents
  */
@@ -897,6 +1386,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case "generate_chant_spec":
         result = await generateChantSpec(args as any);
+        break;
+      // Chant Tools (https://github.com/lex00/chant)
+      case "chant_init":
+        result = await chantInit(args as any);
+        break;
+      case "chant_list":
+        result = await chantList(args as any);
+        break;
+      case "chant_show":
+        result = await chantShow(args as any);
+        break;
+      case "research_workflow":
+        result = await researchWorkflow(args as any);
         break;
       default:
         result = `Unknown tool: ${name}`;
