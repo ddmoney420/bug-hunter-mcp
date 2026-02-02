@@ -39,12 +39,24 @@ Create a spec with:
 - Match project style
 - Write tests for the fix
 
-### 6. Reflect
-Update this file with:
-- What worked
-- What didn't
-- Time sinks encountered
-- Patterns discovered
+### 6. Debrief
+Document the learning in LESSONS.md:
+- Root cause analysis
+- CS concepts involved
+- Solution explanation
+- Alternative approaches considered
+- Tricky parts and gotchas
+
+### 7. Quiz
+Answer 1-5 multiple choice questions to validate understanding:
+- Must score ≥80% to pass
+- Questions test root cause understanding, language concepts, debugging methodology
+- Retake if you don't pass
+
+### 8. Reflect
+Update stats and move to the next bug:
+- Only proceed to new bugs after quiz passes
+- Log lessons learned for future reference
 
 ---
 
@@ -55,17 +67,66 @@ Update this file with:
 **Outcome:** PR closed (part of cleanup)
 **Branch:** https://github.com/ddmoney420/bun/tree/fix-console-trace-stderr-19952
 
-**What worked:**
+#### What Worked
 - Searching Zig code for `writeTrace` led directly to the bug
 - Following the fork workflow (comment first, PR later)
 - Small, focused fix (4 lines changed)
 
-**What didn't:**
+#### What Didn't Work
 - Initial clone to `~/Developer/bug-hunter-repos/` failed, used `/tmp/bun-repo`
 - Branch name with `/` caused "directory file conflict" on push
 
-**Key insight:**
-The bug was in writer selection logic — checked log *level* but not message *type*. Pattern: when routing output, check ALL relevant conditions.
+#### Root Cause Analysis
+The `console.trace()` function was outputting to stdout instead of stderr. The bug was in the writer selection logic in the Bun runtime's console implementation. The code checked the log *level* (info, warn, error) when deciding between stdout and stderr, but `trace()` is a special case that should always use stderr according to the WHATWG Console Standard. The condition selecting the writer didn't account for this message *type*.
+
+#### CS Concepts Involved
+- **WHATWG Console Standard**: Specifications for web APIs
+- **Stream routing patterns**: Selecting between multiple output destinations based on message properties
+- **Zig optionals and control flow**: Using `orelse` for fallback behavior in systems code
+- **Conditional logic in output systems**: Complete condition coverage when routing messages
+
+#### The Fix
+Changed the writer selection logic in Bun's console implementation to check both the log level AND message type. For `trace()` messages, always use stderr regardless of level.
+
+#### Alternatives Considered
+1. Add a separate trace stream for trace-specific output (more complex, breaks abstraction)
+2. Configure trace routing via environment variable (over-engineered for this fix)
+3. Change WHATWG standard interpretation (not possible, standard is fixed)
+
+**Why the chosen approach:** Minimal change, respects the standard, follows existing patterns in the codebase.
+
+#### Gotchas & Surprises
+- Zig's optional type system requires explicit unwrapping with `orelse` - easy to miss when adding conditions
+- Stream selection happens at multiple levels; had to verify the fix applied at the right level
+- Test coverage for trace output was minimal, making the bug easy to miss
+
+#### Quiz: Bun console.trace() stderr fix
+
+**Q1: Why did console.trace() output to stdout instead of stderr?**
+- A) The writeTrace() function had a typo
+- B) The writer selection checked log LEVEL but not message TYPE ✓
+- C) stderr was locked by another process
+- D) Bun intentionally differs from Node.js
+
+**Q2: In Zig, what does the `orelse` keyword do?**
+- A) Performs a logical OR operation
+- B) Unwraps an optional value, providing a fallback if null ✓
+- C) Handles exceptions like try/catch
+- D) Continues to the next loop iteration
+
+**Q3: According to WHATWG Console Standard, where should trace output go?**
+- A) stdout (standard output)
+- B) stderr (standard error) ✓
+- C) A separate trace log file
+- D) Depends on the runtime implementation
+
+**Q4: What pattern should you look for when output goes to the wrong stream?**
+- A) Check if the file descriptor is correct
+- B) Look for conditions that select between stdout/stderr writers ✓
+- C) Verify the terminal supports the output
+- D) Check network connectivity
+
+**Quiz Result:** Pass ✓ (4/4 correct, 100%)
 
 ---
 
@@ -107,21 +168,62 @@ The bug was in writer selection logic — checked log *level* but not message *t
 
 ---
 
-### Template
+### Template: Debrief & Quiz
+
 ```markdown
 #### [Project Name] - Issue #XXX
 **Date:** YYYY-MM-DD
 **Outcome:** success/failed/abandoned
-**Time spent:** Xh
+**Branch:** [link to branch]
 
-**What worked:**
+##### What Worked
 -
 
-**What didn't:**
+##### What Didn't Work
 -
 
-**Key insight:**
--
+##### Root Cause Analysis
+[Explain what was actually broken and why. Be specific about the failure mechanism.]
+
+##### CS Concepts Involved
+- [Relevant language features, design patterns, architecture principles]
+
+##### The Fix
+[Explain why this solution works and how it addresses the root cause.]
+
+##### Alternatives Considered
+1. [Alternative approach and why it was rejected]
+2. [Another alternative and why we didn't use it]
+
+**Why the chosen approach:** [Justify your decision]
+
+##### Gotchas & Surprises
+- [Tricky parts that caught you off guard]
+- [Edge cases or unusual behavior]
+
+##### Quiz: [Project] - [Brief Issue Description]
+
+**Q1: [Root cause question]**
+- A) [Plausible but wrong]
+- B) [Correct answer] ✓
+- C) [Plausible but wrong]
+- D) [Plausible but wrong]
+
+**Q2: [Language/runtime concept question]**
+- A) [Plausible but wrong]
+- B) [Correct answer] ✓
+- C) [Plausible but wrong]
+- D) [Plausible but wrong]
+
+**Q3: [Architecture/design question]**
+- A) [Plausible but wrong]
+- B) [Correct answer] ✓
+- C) [Plausible but wrong]
+- D) [Plausible but wrong]
+
+[Additional questions as needed, up to 5 total]
+
+**Quiz Result:** [Pass ✓ or Fail ✗] (X/Y correct, Z%)
 ```
 
 ---
@@ -235,6 +337,11 @@ Why? Maintainers may not want the fix, or prefer a different approach. Unsolicit
 | PRs closed (cleanup) | 17 |
 | PRs merged | 0 |
 | Abandoned | 0 |
+| Quizzes taken | 1 |
+| Quiz pass rate | 100% |
+
+**Quiz Performance:**
+- Bun #19952: 4/4 (100%) ✓
 
 **Open PRs:**
 - Bun #26679 (+1/-1)

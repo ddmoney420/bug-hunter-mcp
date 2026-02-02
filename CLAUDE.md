@@ -1,57 +1,5 @@
 # Claude Code Agent Instructions for Chant
 
-## Tools Available
-
-### moji - ASCII Art & Kaomoji CLI
-
-Location: `~/go/bin/moji`
-
-Use `moji` for generating ASCII art banners and kaomoji in documentation, guides, and terminal output.
-
-#### Banner Generation
-```bash
-# Basic banner
-moji banner "TEXT"
-
-# With font (shadow has chunky block letters)
-moji banner "TEXT" --font shadow
-moji banner "TEXT" --font slant
-moji banner "TEXT" --font block
-
-# With borders
-moji banner "TEXT" --border bold    # thick lines
-moji banner "TEXT" --border double  # double lines
-moji banner "TEXT" --border round   # rounded corners
-moji banner "TEXT" --border stars   # asterisks
-
-# Combined (recommended for headers)
-moji banner "HEADER" --font shadow --border bold
-```
-
-#### Kaomoji
-```bash
-# Common ones
-moji shrug         # ¯\_(ツ)_/¯
-moji tableflip     # (╯°□°)╯︵ ┻━┻
-moji lenny         # ( ͡° ͜ʖ ͡°)
-moji cool          # (⌐■_■)
-moji magic         # (ノ◕ヮ◕)ノ*:・゚✧
-moji flex          # ᕦ(ò_óˇ)ᕤ
-moji bear          # ʕ•ᴥ•ʔ
-moji cat           # (=^･ω･^=)
-moji fire          # (◣_◢)🔥🔥🔥
-moji sparkle       # (ﾉ◕ヮ◕)ﾉ*:・゚✧
-moji list          # List all available kaomoji
-```
-
-#### When to Use moji
-- Creating documentation headers and section banners
-- Adding personality to guides and READMEs
-- Terminal welcome messages
-- Spec files and completion celebrations
-
----
-
 ## Overview
 
 Claude Code is an AI-powered coding assistant that helps implement specifications for the Chant project. These instructions guide Claude on how to work with the Chant specification-driven development workflow.
@@ -164,6 +112,8 @@ When implementing a spec:
 - `chant work --parallel` - Execute all ready specs in parallel
   - Supports: `--max-parallel N` to limit concurrent agents
   - Supports: `--label <LABEL>` to execute only labeled specs
+  - Supports: `--no-merge` to disable auto-merge (branches preserved for manual merge)
+  - Auto-merge behavior: Completed specs are automatically merged to main; failed specs preserve branches for debugging
 - `chant resume <spec-id>` - Resume a failed spec
 - `chant resume <spec-id> --work` - Resume and automatically re-execute
 
@@ -175,6 +125,7 @@ When implementing a spec:
 - `chant log <spec-id>` - Show spec execution log
 - `chant split <spec-id>` - Split spec into member specs
 - `chant merge --all --rebase --auto` - Merge specs with conflict auto-resolution
+- `chant merge --finalize` - Merge and mark specs as completed atomically
 - `chant finalize <spec-id>` - Finalize a completed spec (validate criteria, update status and model)
   - Automatically detects if spec has an active worktree
   - If worktree exists, finalizes in worktree and commits changes (prevents merge conflicts)
@@ -310,6 +261,65 @@ Several commands support interactive wizards for easier operation. Wizards only 
 
 These wizards guide you through available filters and options when running interactively in a terminal.
 
+## Phase 3: Learn & Retain Workflow
+
+After fixing a bug and opening a PR (or getting it merged), deepen your understanding with the learning workflow:
+
+### The Learning Loop
+```
+Bug Found → Research → Fix → Debrief → Quiz → Pass? → Next Bug
+                                          ↓
+                                         Fail
+                                          ↓
+                                    Review & Retake
+```
+
+### 1. Debrief - Document Your Learning
+
+Update `LESSONS.md` with a thorough analysis:
+
+- **Root Cause Analysis**: What was broken and why? Be specific about the failure mechanism.
+- **CS Concepts**: Language features, design patterns, architecture principles involved.
+- **The Fix**: Explain why your solution works and how it addresses the root cause.
+- **Alternatives**: List other approaches you considered and why you rejected them.
+- **Gotchas**: Tricky parts, edge cases, or surprising behaviors you encountered.
+
+See the template in `LESSONS.md` for the full structure.
+
+### 2. Quiz - Test Your Understanding
+
+Create a 1-5 question multiple-choice quiz to validate mastery. Questions should test:
+
+- **Root Cause Understanding**: Not just "what file did you change?" but "what condition was wrong?"
+- **Language/Runtime Concepts**: Zig optionals, JS event loop, Go interfaces, etc.
+- **Debugging Methodology**: How did you find the bug?
+- **Architecture Awareness**: Why was the code structured this way?
+- **General CS Principles**: When applicable and transferable.
+
+**Format:**
+```
+Q1: [Question testing understanding]
+A) [Plausible but incorrect]
+B) [Correct answer] ✓
+C) [Plausible but incorrect]
+D) [Plausible but incorrect]
+```
+
+**Passing Threshold:** ≥80% (typically 4/5 or 5/5 correct)
+
+### 3. Gate Check - Only Proceed When You Pass
+
+- **Pass (≥80%)**: Log the quiz result in LESSONS.md, update stats, proceed to next bug.
+- **Fail**: Review incorrect answers, reread relevant sections of LESSONS.md, retake the quiz.
+- **Rule**: No new bugs until the quiz is passed. This ensures mastery-based progression.
+
+### Quiz Tracking
+
+Track your quiz performance in the Stats section of `LESSONS.md`:
+- Number of quizzes taken
+- Pass rate (percentage of quizzes passed on first attempt)
+- Individual quiz results for each fix
+
 ## Key Principles
 
 - **Auditability**: Every change is tracked in a spec with clear intent
@@ -317,3 +327,44 @@ These wizards guide you through available filters and options when running inter
 - **Isolation**: Work happens in worktrees, keeping main branch clean
 - **Intention-driven**: Focus on what to build, not how to build it
 - **Idempotent**: Specs document and prove their own correctness
+
+<!-- chant:begin -->
+## Chant Workflow
+
+You are an **orchestrator**. Do not edit files directly - all changes flow through the spec system.
+
+### Quick Reference
+
+```bash
+chant add "description"     # Create spec
+chant work <id>             # Execute spec (agent implements it)
+chant show <id>             # View spec details
+chant log <id>              # Monitor agent progress
+chant finalize <id>         # Mark spec completed
+chant list                  # List all specs
+```
+
+### Rules
+
+1. **Create specs first** - `chant add` creates a skeleton, then edit the spec file to add acceptance criteria
+2. **Use `chant work`** - Never implement directly; dispatch to agents
+3. **Commit format** - `chant(SPEC-ID): description`
+4. **Monitor agents** - Use `chant log` to check progress and detect issues
+5. **All changes audited** - Specs track intent, execution, and results
+
+### Spec Lifecycle
+
+1. `chant add "feature X"` → Creates pending spec
+2. Edit `.chant/specs/<id>.md` → Add acceptance criteria
+3. `chant work <id>` → Agent implements in isolated worktree
+4. `chant finalize <id>` → Validates criteria met, marks completed
+
+### When Agents Struggle
+
+Watch `chant log` for repeated errors or circular fixes. If stuck:
+1. Stop the agent
+2. Split spec into research + implementation phases
+3. Work phases sequentially
+
+For full documentation: `chant --help` or see `.chant/` directory
+<!-- chant:end -->
