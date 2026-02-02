@@ -231,10 +231,15 @@ Why? Maintainers may not want the fix, or prefer a different approach. Unsolicit
 | Metric | Count |
 |--------|-------|
 | Bugs hunted | 1 |
-| PRs submitted | 2 (kept) |
-| PRs closed (cleanup) | 16 |
+| PRs submitted | 3 (2 Bun, 1 Deno) |
+| PRs closed (cleanup) | 17 |
 | PRs merged | 0 |
 | Abandoned | 0 |
+
+**Open PRs:**
+- Bun #26679 (+1/-1)
+- Bun #26567 (+7/-1)
+- Deno #31985 (maintainer approved)
 
 ---
 
