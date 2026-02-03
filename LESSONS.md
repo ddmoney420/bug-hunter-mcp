@@ -333,8 +333,8 @@ Why? Maintainers may not want the fix, or prefer a different approach. Unsolicit
 | Metric | Count |
 |--------|-------|
 | Bugs hunted | 1 |
-| PRs submitted | 3 (2 Bun, 1 Deno) |
-| PRs closed (cleanup) | 17 |
+| PRs submitted | 1 (Deno) |
+| PRs closed (cleanup) | 29 |
 | PRs merged | 0 |
 | Abandoned | 0 |
 | Quizzes taken | 1 |
@@ -344,10 +344,8 @@ Why? Maintainers may not want the fix, or prefer a different approach. Unsolicit
 - Bun #19952: 4/4 (100%) ✓
 
 **Open PRs:**
-- Bun #26679 (+1/-1)
-- Bun #26567 (+7/-1)
-- Deno #31985 (maintainer approved)
+- Deno #31985 (maintainer approved, needs Windows test fix)
 
 ---
 
-*Last updated: 2026-02-02*
+*Last updated: 2026-02-03*
