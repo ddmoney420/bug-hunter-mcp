@@ -335,7 +335,7 @@ Why? Maintainers may not want the fix, or prefer a different approach. Unsolicit
 | Bugs hunted | 1 |
 | PRs submitted | 1 (Deno) |
 | PRs closed (cleanup) | 29 |
-| PRs merged | 0 |
+| PRs merged | 1 |
 | Abandoned | 0 |
 | Quizzes taken | 1 |
 | Quiz pass rate | 100% |
@@ -343,8 +343,10 @@ Why? Maintainers may not want the fix, or prefer a different approach. Unsolicit
 **Quiz Performance:**
 - Bun #19952: 4/4 (100%) ✓
 
-**Open PRs:**
-- Deno #31985 (maintainer approved, needs Windows test fix)
+**Merged PRs:**
+- Deno #31985 — hasColors() for process.stdout/stderr ✓
+
+**Open PRs:** None
 
 ---
 
