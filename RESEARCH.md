@@ -176,6 +176,34 @@ The weakest learning occurred in narrow, isolated domains where mastery required
 
 ---
 
+---
+
+## Feature Enhancements for Bug Hunter MCP
+
+As an educational platform, bug-hunter-mcp can deepen its pedagogical value by adding strategic enhancements that support learning through bug hunting. Below are five distinct feature proposals, classified by implementation effort.
+
+### 1. Difficulty & Concept Tagging System **[Quick]**
+
+Add frontmatter fields to bug entries in LESSONS.md to classify issues by difficulty and learning concepts. Each bug would include: `difficulty: easy|medium|hard` and `concepts: [list, of, cs, concepts]`. This enables learners to filter bugs by skill level and discover patterns across issues (e.g., "all race condition bugs" or "medium-difficulty async problems"). The educational value lies in helping developers recognize that seemingly unrelated bugs share common underlying patterns—a key skill in systems thinking. Implementing this requires only metadata additions to existing markdown structure, making it achievable without architectural changes.
+
+### 2. Quiz Generation from LESSONS.md **[Large]**
+
+Build an interactive quiz generator that creates adaptive quizzes from the Debrief sections in LESSONS.md using Claude API. The system would extract root cause analysis, CS concepts, and gotchas from each lesson, generating personalized quizzes that adapt difficulty based on user performance. Developers could then practice their understanding across multiple bugs, with the system tracking weak areas and recommending similar bugs to strengthen those concepts. This mirrors Codecrafters' staged learning pattern by providing immediate feedback and progressive challenge. The implementation requires integrating LLM-based question generation, state management for quiz progress, and connection to the MCP tool ecosystem.
+
+### 3. Conceptual Dependency Graph **[Medium]**
+
+Create a visual dependency graph showing how CS concepts learned from one bug relate to and enable understanding of others. When browsing bugs in LESSONS.md, developers could see which concepts are prerequisites and which advanced bugs build on them. For example, "race condition fix" might depend on "understanding locks" and "atomic operations." This directly addresses the Codecrafters insight that staged decomposition reduces cognitive load by showing progression paths. Implementation requires building a concept-to-bug mapping system, a graph visualization in the output, and filtering logic to recommend "next bugs" based on completed lessons.
+
+### 4. Bug Reproduction Environment Templates **[Quick]**
+
+Create standardized Docker/environment templates for rapidly setting up local bug reproduction environments. When analyzing a bug, the tool would generate a minimal reproducible environment (Dockerfile, docker-compose.yml, or development setup script) based on the target repository's tech stack. This accelerates the learning process by removing environment setup friction and lets developers focus on understanding the problem rather than wrestling with dependencies. The educational benefit is significant: developers learn by hands-on reproduction, which the Phase 1 Fork Workflow (LESSONS.md) identifies as essential. Implementation involves template generation based on language/framework detection and packaging with the analyze_repo tool.
+
+### 5. Issue Taxonomy with Problem-Solving Strategy Patterns **[Medium]**
+
+Build a searchable taxonomy that categorizes open source issues by problem type (race condition, memory leak, incorrect logic, API incompatibility, etc.) and the problem-solving strategies that work for each. When hunting for issues, developers could filter by category and see hints about which debugging approaches and tools historically work best (strace for syscall issues, profilers for performance, static analysis for type bugs, etc.). This teaches the metacognitive skill of "how to approach different problem types"—learners develop intuition about where to look first. Implementation requires building a classification system for analyzed issues, storing the category/strategy mapping, and integrating it with the hunt_issues tool for filtering and recommendation.
+
+---
+
 ## Sources
 
 Research compiled from:
