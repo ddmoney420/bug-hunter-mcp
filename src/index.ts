@@ -133,34 +133,45 @@ if (!fs.existsSync(REPOS_DIR)) {
 const tools: Tool[] = [
   {
     name: "hunt_issues",
-    description: `Search GitHub for good first issues matching specified criteria.
+    description: `Discover open source issues on GitHub that match your skills and interests.
 
-Searches across popular repositories for issues labeled "good first issue",
-"help wanted", "beginner friendly", etc. Can filter by language and keywords.
+This tool searches for "good first issue" and "help wanted" labeled issues across repositories.
+You can filter by programming language (e.g., Rust, Go, TypeScript), keywords in issue titles,
+and minimum repository stars to find quality projects. Use this to explore opportunities before
+diving deeper with analyze_repo.
 
-Returns a list of issues with repo, title, URL, labels, and comment count.`,
+TYPICAL WORKFLOW:
+1. hunt_issues {language: "rust", min_stars: 100} → Find beginner Rust issues in established repos
+2. analyze_repo {repo: "owner/name"} → Study the codebase you found
+3. scaffold_solution → Generate starter code
+4. claim_issue → Let maintainers know you're working on it
+
+PRACTICAL EXAMPLES:
+- Find Zig issues: hunt_issues {language: "zig", limit: 5}
+- Search for CLI-related work: hunt_issues {keywords: "cli", min_stars: 50}
+- Expand search beyond typical labels: hunt_issues {labels: "good-first-issue,help-wanted"}`,
     inputSchema: {
       type: "object",
       properties: {
         language: {
           type: "string",
-          description: "Programming language to filter by (e.g., 'zig', 'go', 'typescript', 'rust')",
+          description: "Programming language filter (e.g., 'rust', 'go', 'typescript', 'zig', 'python'). Optional: searches all languages if omitted.",
         },
         keywords: {
           type: "string",
-          description: "Keywords to search for in issue titles/body (e.g., 'cli', 'api', 'ui')",
+          description: "Keywords to match in issue title or body (e.g., 'cli', 'api', 'ui', 'parser'). Optional: searches all issues if omitted.",
         },
         labels: {
           type: "string",
-          description: "Comma-separated labels to filter by (default: 'good first issue')",
+          description: "Comma-separated GitHub labels to filter by. Default: 'good first issue'. Other common values: 'help-wanted', 'beginner-friendly', 'easy'.",
         },
         limit: {
           type: "number",
-          description: "Maximum number of issues to return (default: 10, max: 30)",
+          description: "Maximum issues to return. Valid range: 1-30 (default: 10). Higher values give more options but take longer.",
         },
         min_stars: {
           type: "number",
-          description: "Minimum repository stars (default: 100)",
+          description: "Minimum repository stars (0+, default: 100). Lower values = newer projects; higher values = more established projects.",
         },
       },
       required: [],
@@ -168,26 +179,38 @@ Returns a list of issues with repo, title, URL, labels, and comment count.`,
   },
   {
     name: "analyze_repo",
-    description: `Clone a repository and analyze its structure for contribution.
+    description: `Clone and analyze a repository's structure, build system, and contributing guidelines.
 
-Clones the repo (or uses existing clone), then analyzes:
+This tool performs a deep dive into a GitHub repository to understand how to contribute.
+It clones the repo (or updates existing clone), then provides:
 - Project structure and key directories
-- Build system and dependencies
-- Contributing guidelines
+- Build system and dependencies (detects Cargo.toml, package.json, build.zig, etc.)
+- Contributing guidelines and conventions
 - Open issues summary
-- Code patterns and conventions
+- Code patterns used in the project
 
-Returns a comprehensive analysis to help you understand the codebase.`,
+TYPICAL WORKFLOW:
+1. hunt_issues → Find an interesting issue
+2. analyze_repo {repo: "owner/name"} ← You are here
+3. scaffold_solution → Generate starter implementation
+4. claim_issue → Comment on the issue
+
+PRACTICAL EXAMPLES:
+- Analyze zigtools/zls: analyze_repo {repo: "zigtools/zls"}
+- Analyze and focus on issue #42: analyze_repo {repo: "owner/name", issue_number: 42}
+
+The analysis includes CONTRIBUTING.md content, key file detection, and directory structure.
+Cloned repos are cached in ~/Developer/bug-hunter-repos/ for reuse.`,
     inputSchema: {
       type: "object",
       properties: {
         repo: {
           type: "string",
-          description: "Repository in 'owner/repo' format (e.g., 'zigtools/zls')",
+          description: "Repository path in 'owner/repo' format (e.g., 'zigtools/zls'). Required: uses GitHub API to fetch repo info.",
         },
         issue_number: {
           type: "number",
-          description: "Optional: specific issue number to focus analysis on",
+          description: "Optional: specific issue number to fetch and analyze alongside the repo. If provided, shows issue details, description, and recent comments.",
         },
       },
       required: ["repo"],
@@ -195,29 +218,43 @@ Returns a comprehensive analysis to help you understand the codebase.`,
   },
   {
     name: "scaffold_solution",
-    description: `Generate a starter implementation scaffold for a GitHub issue.
+    description: `Generate a starter implementation scaffold tailored to the project type.
 
-Analyzes the issue description and codebase to generate:
-- Skeleton code files in the appropriate location
-- Implementation notes and TODOs
-- Test file templates
-- Integration instructions
+This tool creates boilerplate code and project structure for solving a specific issue.
+Based on project type detection (Rust, Zig, Go, TypeScript, Python, etc.), it generates:
+- Skeleton implementation files with proper syntax and conventions
+- NOTES.md with issue details, analysis, and implementation checklist
+- Test file templates matching project conventions
+- TODO list and next steps
 
-The scaffold gives you a head start on solving the issue.`,
+TYPICAL WORKFLOW:
+1. hunt_issues → Find an issue
+2. analyze_repo → Understand the codebase
+3. scaffold_solution {repo: "owner/name", issue_number: 42} ← You are here
+4. Review NOTES.md in the _scaffold_issue_42 directory
+5. Study the actual codebase
+6. Implement your solution using the scaffold as a starting point
+
+PRACTICAL EXAMPLE:
+- Scaffold for Rust project: scaffold_solution {repo: "rust-lang/rust", issue_number: 123}
+  Creates: implementation_title.rs, tests, and NOTES.md with TODOs
+
+The scaffold is created in _scaffold_issue_<number>/ directory (or custom output_dir).
+Use it as a starting point, then move completed files to appropriate locations in the repo.`,
     inputSchema: {
       type: "object",
       properties: {
         repo: {
           type: "string",
-          description: "Repository in 'owner/repo' format",
+          description: "Repository in 'owner/repo' format (e.g., 'rust-lang/rust'). Required: determines which repo to analyze.",
         },
         issue_number: {
           type: "number",
-          description: "Issue number to scaffold a solution for",
+          description: "GitHub issue number to scaffold (1+). Required: fetches issue details and generates relevant starter code.",
         },
         output_dir: {
           type: "string",
-          description: "Optional: custom output directory for scaffold files",
+          description: "Optional: custom output directory for scaffold files. Default: _scaffold_issue_<number>/ in the cloned repo directory.",
         },
       },
       required: ["repo", "issue_number"],
@@ -225,24 +262,43 @@ The scaffold gives you a head start on solving the issue.`,
   },
   {
     name: "claim_issue",
-    description: `Comment on a GitHub issue to claim it for work.
+    description: `Post a comment on a GitHub issue to let maintainers know you're working on it.
 
-Posts a comment indicating you're working on the issue.
-Requires GITHUB_TOKEN environment variable to be set.`,
+This tool helps you communicate your intent to the maintainers before starting work.
+It posts a comment (default or custom) indicating you've analyzed the codebase and are
+beginning implementation. This prevents duplicate effort and signals active work.
+
+IMPORTANT: Requires GITHUB_TOKEN environment variable with 'repo' scope permissions.
+Get your token at: https://github.com/settings/tokens
+
+TYPICAL WORKFLOW:
+1. hunt_issues → Find an issue
+2. analyze_repo → Study the codebase
+3. scaffold_solution → Generate starter code
+4. claim_issue {repo: "owner/name", issue_number: 42} ← You are here
+5. Implement your solution
+6. Submit a pull request
+
+DEFAULT MESSAGE:
+"I'd like to work on this issue! I've analyzed the codebase and am starting on an implementation."
+
+PRACTICAL EXAMPLE:
+- Claim with default message: claim_issue {repo: "zigtools/zls", issue_number: 123}
+- Claim with custom message: claim_issue {repo: "...", issue_number: 123, message: "I'll work on this using approach X..."}`,
     inputSchema: {
       type: "object",
       properties: {
         repo: {
           type: "string",
-          description: "Repository in 'owner/repo' format",
+          description: "Repository in 'owner/repo' format (e.g., 'zigtools/zls'). Required: determines where to post the comment.",
         },
         issue_number: {
           type: "number",
-          description: "Issue number to claim",
+          description: "GitHub issue number to claim (1+). Required: the specific issue comment thread.",
         },
         message: {
           type: "string",
-          description: "Optional: custom claim message",
+          description: "Optional: custom claim message (up to 5000 chars). Default message indicates you've analyzed the codebase and are starting implementation.",
         },
       },
       required: ["repo", "issue_number"],
@@ -250,34 +306,51 @@ Requires GITHUB_TOKEN environment variable to be set.`,
   },
   {
     name: "generate_chant_spec",
-    description: `Generate a Chant driver spec from a GitHub issue.
+    description: `Generate a Chant spec from a GitHub issue for spec-driven development.
 
-Creates a markdown spec file that can be executed by Chant's AI agents.
-The spec includes:
-- Issue context and background
-- Acceptance criteria derived from the issue
-- Target files if identifiable
-- Labels for organization
+This tool bridges GitHub issues and Chant's spec-driven workflow. It creates a markdown spec file
+that Chant agents can execute. The spec auto-extracts:
+- Issue context and acceptance criteria
+- Target files likely to need changes
+- GitHub labels (converted to Chant labels)
+- Issue URL and background
 
-Use with 'chant split' to break into focused sub-specs, then 'chant work' to execute.`,
+CHANT WORKFLOW (Spec-Driven Development):
+1. hunt_issues → Find an issue
+2. analyze_repo → Understand the code
+3. generate_chant_spec {repo: "owner/name", issue_number: 42} ← You are here
+4. Edit the .md spec to refine acceptance criteria
+5. Use 'chant split' to break into focused sub-specs
+6. Run 'chant work <spec-id>' to have AI agents implement
+
+PRACTICAL EXAMPLE:
+- Generate spec: generate_chant_spec {repo: "zig-lang/zig", issue_number: 15000}
+- Output: .chant/specs/zig-lang-zig-implement-feature.md
+- Edit the spec to improve acceptance criteria
+- Split: chant split zig-lang-zig-implement-feature
+- Execute: chant work zig-lang-zig-implement-feature.1
+
+RELATED TOOLS:
+- research_workflow: Use this instead if you want research phase + implementation phase
+- chant_init: Initialize .chant/ in the repo first (if not already done)`,
     inputSchema: {
       type: "object",
       properties: {
         repo: {
           type: "string",
-          description: "Repository in 'owner/repo' format",
+          description: "Repository in 'owner/repo' format (e.g., 'zig-lang/zig'). Required: fetches issue and determines project type.",
         },
         issue_number: {
           type: "number",
-          description: "Issue number to create a spec for",
+          description: "GitHub issue number to convert to spec (1+). Required: defines the task and acceptance criteria.",
         },
         spec_id: {
           type: "string",
-          description: "Optional: custom spec ID (default: auto-generated from issue)",
+          description: "Optional: custom spec ID (e.g., 'my-custom-id'). Default: auto-generated from issue title. Must be lowercase alphanumeric + hyphens.",
         },
         output_dir: {
           type: "string",
-          description: "Optional: output directory for the spec (default: .chant/specs in repo)",
+          description: "Optional: output directory for spec file. Default: .chant/specs/ in the cloned repo. Directory is created if it doesn't exist.",
         },
       },
       required: ["repo", "issue_number"],
@@ -288,26 +361,44 @@ Use with 'chant split' to break into focused sub-specs, then 'chant work' to exe
   // =========================================================================
   {
     name: "chant_init",
-    description: `Initialize Chant in a repository for spec-driven development.
+    description: `Initialize Chant spec-driven development infrastructure in a repository.
 
-Sets up the .chant/ directory structure with config, prompts, and specs folders.
-Use this after cloning a repo to enable the Chant workflow.
+This sets up the .chant/ directory structure with configuration, agent prompts, and
+spec templates. Run this once per repository to enable the Chant workflow. It creates:
+- .chant/config.yaml - Configuration for agents and execution
+- .chant/prompts/ - AI agent system prompts
+- .chant/specs/ - Directory for spec files
+- .chant/archive/ - Archive for completed specs
 
-Chant: https://github.com/lex00/chant`,
+TYPICAL WORKFLOW:
+1. hunt_issues → Find an issue
+2. analyze_repo → Clone the repo (automatically clones if not present)
+3. chant_init {repo: "owner/name"} ← You are here
+4. generate_chant_spec or research_workflow → Create specs
+5. chant_list → See all specs
+6. chant work → Execute specs with AI agents
+
+PRACTICAL EXAMPLES:
+- Initialize repo: chant_init {repo: "zigtools/zls"}
+- Reinitialize (reset config): chant_init {repo: "zigtools/zls", force: true}
+- Custom agent: chant_init {repo: "zigtools/zls", agent: "custom"}
+
+NOTE: analyze_repo automatically clones repos. chant_init just sets up the workflow.
+CHANT: Specification-driven development - https://github.com/lex00/chant`,
     inputSchema: {
       type: "object",
       properties: {
         repo: {
           type: "string",
-          description: "Repository in 'owner/repo' format",
+          description: "Repository in 'owner/repo' format (e.g., 'zigtools/zls'). Required: determines where to set up .chant/.",
         },
         agent: {
           type: "string",
-          description: "Agent type to configure (default: 'claude')",
+          description: "Agent type to configure (default: 'claude'). Common values: 'claude', 'local', 'custom'. Determines which AI system handles spec execution.",
         },
         force: {
           type: "boolean",
-          description: "Force reinitialization if already initialized",
+          description: "Optional: force reinitialization even if .chant/ already exists (default: false). Use to reset config to defaults.",
         },
       },
       required: ["repo"],
@@ -315,30 +406,48 @@ Chant: https://github.com/lex00/chant`,
   },
   {
     name: "chant_list",
-    description: `List all Chant specs in a repository.
+    description: `List all Chant specs in a repository with filtering options.
 
-Shows spec IDs, titles, and status (pending, in_progress, completed).
-Filter by status, type, or labels.
+Displays spec IDs, titles, descriptions, and execution status. Use filters to find
+specific specs by status (pending, in_progress, completed), type (code, task, driver, research),
+or custom labels. This gives you an overview of all work tracked in the repository.
 
-Chant: https://github.com/lex00/chant`,
+TYPICAL WORKFLOW:
+1. chant_init → Set up Chant
+2. generate_chant_spec or research_workflow → Create specs
+3. chant_list {repo: "owner/name"} ← You are here
+4. chant_show → View details of a specific spec
+5. chant work → Execute a spec
+
+PRACTICAL EXAMPLES:
+- List all specs: chant_list {repo: "zigtools/zls"}
+- Show only pending work: chant_list {repo: "zigtools/zls", status: "pending"}
+- Filter by type: chant_list {repo: "zigtools/zls", type: "code"}
+- Filter by label: chant_list {repo: "zigtools/zls", label: "bug-fix"}
+- Combine filters: chant_list {repo: "zigtools/zls", status: "pending", type: "code"}
+
+STATUS VALUES: pending (not started), in_progress (being worked), completed (done), ready (dependencies met), blocked (waiting for other specs)
+TYPE VALUES: code (implementation), task (documentation/setup), driver (issue template), research (investigation)
+
+CHANT: https://github.com/lex00/chant`,
     inputSchema: {
       type: "object",
       properties: {
         repo: {
           type: "string",
-          description: "Repository in 'owner/repo' format",
+          description: "Repository in 'owner/repo' format (e.g., 'zigtools/zls'). Required: determines which .chant/specs/ to read.",
         },
         status: {
           type: "string",
-          description: "Filter by status: pending, in_progress, completed",
+          description: "Optional: filter by status. Valid values: pending, in_progress, completed, ready, blocked. Shows only specs matching this status.",
         },
         type: {
           type: "string",
-          description: "Filter by type: code, task, driver, research",
+          description: "Optional: filter by spec type. Valid values: code (implementation), task (setup/docs), driver (from issue), research (investigation). Shows only matching types.",
         },
         label: {
           type: "string",
-          description: "Filter by label",
+          description: "Optional: filter by custom label. Shows only specs tagged with this label. Labels are defined in spec YAML frontmatter.",
         },
       },
       required: ["repo"],
@@ -346,21 +455,42 @@ Chant: https://github.com/lex00/chant`,
   },
   {
     name: "chant_show",
-    description: `Show details of a specific Chant spec.
+    description: `Display complete details of a specific Chant spec.
 
-Displays the full spec content including acceptance criteria, target files, and status.
+Shows the full spec content including YAML frontmatter, problem statement, acceptance criteria,
+target files, and status. Use this to review a spec before executing it, or to understand
+what a spec accomplished after completion.
 
-Chant: https://github.com/lex00/chant`,
+TYPICAL WORKFLOW:
+1. chant_list → Find spec IDs
+2. chant_show {repo: "owner/name", spec_id: "my-feature-123"} ← You are here
+3. Review acceptance criteria and status
+4. chant work → Execute the spec if pending
+
+PRACTICAL EXAMPLES:
+- View a spec: chant_show {repo: "zigtools/zls", spec_id: "add-hover-support"}
+- Check a completed spec: chant_show {repo: "zigtools/zls", spec_id: "fix-parser-bug"}
+- Understand dependencies: chant_show {repo: "zigtools/zls", spec_id: "feature-x"} (shows depends_on)
+
+OUTPUT INCLUDES:
+- Type: code, task, driver, research, group
+- Status: pending, in_progress, completed, ready, blocked
+- Acceptance Criteria: checklist of items to complete
+- Target Files: which files this spec modifies
+- Labels: custom labels for organization
+- Full problem description and solution approach
+
+CHANT: https://github.com/lex00/chant`,
     inputSchema: {
       type: "object",
       properties: {
         repo: {
           type: "string",
-          description: "Repository in 'owner/repo' format",
+          description: "Repository in 'owner/repo' format (e.g., 'zigtools/zls'). Required: determines which .chant/specs/ to search.",
         },
         spec_id: {
           type: "string",
-          description: "The spec ID to show",
+          description: "Spec identifier to display (e.g., 'add-hover-support'). Required: the specific spec to view. Use chant_list to find spec IDs.",
         },
       },
       required: ["repo", "spec_id"],
@@ -368,29 +498,55 @@ Chant: https://github.com/lex00/chant`,
   },
   {
     name: "research_workflow",
-    description: `Run the full Chant research workflow for an issue.
+    description: `Execute Chant's two-phase workflow: research then implementation.
 
-Creates a research spec to investigate the codebase, then generates an implementation spec.
-This follows Chant's enterprise research workflow pattern:
-1. Research phase - Analyze codebase, document findings
-2. Implementation phase - Execute based on research
+This is the enterprise-grade approach for complex issues. It creates two interdependent specs:
+1. RESEARCH PHASE: Investigate codebase, document findings, answer research questions
+   - Runs first to understand the problem space
+   - Creates RESEARCH_<issue_number>.md with findings
+   - Identifies files, patterns, and edge cases
 
-Chant: https://github.com/lex00/chant`,
+2. IMPLEMENTATION PHASE: Execute implementation based on research findings
+   - Automatically depends on research phase completing first
+   - Uses research findings to guide implementation
+   - Follows documented approach and conventions
+
+WORKFLOW:
+1. hunt_issues → Find an issue
+2. analyze_repo → Quick overview
+3. research_workflow {repo: "owner/name", issue_number: 123} ← You are here
+4. chant work <research-spec-id> → Answer research questions
+5. Review RESEARCH_123.md findings
+6. chant work <implementation-spec-id> → Execute implementation
+7. Submit PR!
+
+PRACTICAL EXAMPLE:
+research_workflow {repo: "zigtools/zls", issue_number: 500, research_questions: ["What modules parse this format?", "What edge cases exist?"]}
+
+This creates:
+- <date>-research-500.md spec (research phase)
+- <date>-impl-500.md spec (implementation phase, depends on research)
+
+COMPARE TO:
+- generate_chant_spec: Single spec, direct implementation
+- research_workflow: Two specs, research-informed implementation (recommended for complex issues)
+
+CHANT: https://github.com/lex00/chant`,
     inputSchema: {
       type: "object",
       properties: {
         repo: {
           type: "string",
-          description: "Repository in 'owner/repo' format",
+          description: "Repository in 'owner/repo' format (e.g., 'zigtools/zls'). Required: fetches issue and creates specs.",
         },
         issue_number: {
           type: "number",
-          description: "GitHub issue number to research and implement",
+          description: "GitHub issue number to research and implement (1+). Required: defines the problem for research phase.",
         },
         research_questions: {
           type: "array",
           items: { type: "string" },
-          description: "Specific questions to answer during research phase",
+          description: "Optional: custom research questions to guide investigation. Default: generic questions about files, patterns, edge cases, and tests. Examples: ['What modules handle this?', 'What edge cases exist?']",
         },
       },
       required: ["repo", "issue_number"],
