@@ -37,6 +37,22 @@ import { execSync, exec } from "child_process";
 import { promisify } from "util";
 import * as fs from "fs";
 import * as path from "path";
+import {
+  validateRepoFormat,
+  validatePositiveNumber,
+  validateNonNegativeNumber,
+  validateNumberRange,
+  validateEnum,
+  validateSpecId,
+  validateLanguage,
+  validateKeywords,
+  validateLabels,
+  validateAgent,
+  validateDirectoryPath,
+  validateMessage,
+  validateStringArray,
+  type ValidationResult,
+} from "./validators.js";
 
 const execAsync = promisify(exec);
 
@@ -392,6 +408,42 @@ async function huntIssues(params: {
   limit?: number;
   min_stars?: number;
 }): Promise<string> {
+  // Validate inputs
+  const languageValidation = validateLanguage(params.language, false);
+  if (!languageValidation.isValid) {
+    return `Error: ${languageValidation.error}`;
+  }
+
+  const keywordsValidation = validateKeywords(params.keywords, false);
+  if (!keywordsValidation.isValid) {
+    return `Error: ${keywordsValidation.error}`;
+  }
+
+  const labelsValidation = validateLabels(params.labels, false);
+  if (!labelsValidation.isValid) {
+    return `Error: ${labelsValidation.error}`;
+  }
+
+  const limitValidation = validateNumberRange(
+    params.limit,
+    "Limit",
+    1,
+    30,
+    false
+  );
+  if (!limitValidation.isValid) {
+    return `Error: ${limitValidation.error}`;
+  }
+
+  const minStarsValidation = validateNonNegativeNumber(
+    params.min_stars,
+    "Min stars",
+    false
+  );
+  if (!minStarsValidation.isValid) {
+    return `Error: ${minStarsValidation.error}`;
+  }
+
   const {
     language,
     keywords,
@@ -466,6 +518,21 @@ async function analyzeRepo(params: {
   repo: string;
   issue_number?: number;
 }): Promise<string> {
+  // Validate inputs
+  const repoValidation = validateRepoFormat(params.repo);
+  if (!repoValidation.isValid) {
+    return `Error: ${repoValidation.error}`;
+  }
+
+  const issueNumberValidation = validatePositiveNumber(
+    params.issue_number,
+    "Issue number",
+    false
+  );
+  if (!issueNumberValidation.isValid) {
+    return `Error: ${issueNumberValidation.error}`;
+  }
+
   const { repo, issue_number } = params;
   const [owner, repoName] = repo.split("/");
   const repoDir = path.join(REPOS_DIR, owner, repoName);
@@ -591,6 +658,30 @@ async function scaffoldSolution(params: {
   issue_number: number;
   output_dir?: string;
 }): Promise<string> {
+  // Validate inputs
+  const repoValidation = validateRepoFormat(params.repo);
+  if (!repoValidation.isValid) {
+    return `Error: ${repoValidation.error}`;
+  }
+
+  const issueNumberValidation = validatePositiveNumber(
+    params.issue_number,
+    "Issue number",
+    true
+  );
+  if (!issueNumberValidation.isValid) {
+    return `Error: ${issueNumberValidation.error}`;
+  }
+
+  const outputDirValidation = validateDirectoryPath(
+    params.output_dir,
+    "Output directory",
+    false
+  );
+  if (!outputDirValidation.isValid) {
+    return `Error: ${outputDirValidation.error}`;
+  }
+
   const { repo, issue_number, output_dir } = params;
   const [owner, repoName] = repo.split("/");
   const repoDir = path.join(REPOS_DIR, owner, repoName);
@@ -689,6 +780,26 @@ async function claimIssue(params: {
   issue_number: number;
   message?: string;
 }): Promise<string> {
+  // Validate inputs
+  const repoValidation = validateRepoFormat(params.repo);
+  if (!repoValidation.isValid) {
+    return `Error: ${repoValidation.error}`;
+  }
+
+  const issueNumberValidation = validatePositiveNumber(
+    params.issue_number,
+    "Issue number",
+    true
+  );
+  if (!issueNumberValidation.isValid) {
+    return `Error: ${issueNumberValidation.error}`;
+  }
+
+  const messageValidation = validateMessage(params.message, "Message", 5000);
+  if (!messageValidation.isValid) {
+    return `Error: ${messageValidation.error}`;
+  }
+
   const { repo, issue_number, message } = params;
   const [owner, repoName] = repo.split("/");
 
@@ -718,6 +829,35 @@ async function generateChantSpec(params: {
   spec_id?: string;
   output_dir?: string;
 }): Promise<string> {
+  // Validate inputs
+  const repoValidation = validateRepoFormat(params.repo);
+  if (!repoValidation.isValid) {
+    return `Error: ${repoValidation.error}`;
+  }
+
+  const issueNumberValidation = validatePositiveNumber(
+    params.issue_number,
+    "Issue number",
+    true
+  );
+  if (!issueNumberValidation.isValid) {
+    return `Error: ${issueNumberValidation.error}`;
+  }
+
+  const specIdValidation = validateSpecId(params.spec_id);
+  if (params.spec_id && !specIdValidation.isValid) {
+    return `Error: ${specIdValidation.error}`;
+  }
+
+  const outputDirValidation = validateDirectoryPath(
+    params.output_dir,
+    "Output directory",
+    false
+  );
+  if (!outputDirValidation.isValid) {
+    return `Error: ${outputDirValidation.error}`;
+  }
+
   const { repo, issue_number, spec_id, output_dir } = params;
   const [owner, repoName] = repo.split("/");
   const repoDir = path.join(REPOS_DIR, owner, repoName);
@@ -895,6 +1035,17 @@ async function chantInit(params: {
   agent?: string;
   force?: boolean;
 }): Promise<string> {
+  // Validate inputs
+  const repoValidation = validateRepoFormat(params.repo);
+  if (!repoValidation.isValid) {
+    return `Error: ${repoValidation.error}`;
+  }
+
+  const agentValidation = validateAgent(params.agent);
+  if (!agentValidation.isValid) {
+    return `Error: ${agentValidation.error}`;
+  }
+
   const { repo, agent = "claude", force = false } = params;
   const [owner, repoName] = repo.split("/");
   const repoDir = path.join(REPOS_DIR, owner, repoName);
@@ -950,6 +1101,37 @@ async function chantList(params: {
   type?: string;
   label?: string;
 }): Promise<string> {
+  // Validate inputs
+  const repoValidation = validateRepoFormat(params.repo);
+  if (!repoValidation.isValid) {
+    return `Error: ${repoValidation.error}`;
+  }
+
+  const statusValidation = validateEnum(
+    params.status,
+    "Status",
+    ["pending", "in_progress", "completed", "ready", "blocked"],
+    false
+  );
+  if (!statusValidation.isValid) {
+    return `Error: ${statusValidation.error}`;
+  }
+
+  const typeValidation = validateEnum(
+    params.type,
+    "Type",
+    ["code", "task", "driver", "research", "group"],
+    false
+  );
+  if (!typeValidation.isValid) {
+    return `Error: ${typeValidation.error}`;
+  }
+
+  const labelValidation = validateLabels(params.label, false);
+  if (!labelValidation.isValid) {
+    return `Error: ${labelValidation.error}`;
+  }
+
   const { repo, status, type, label } = params;
   const [owner, repoName] = repo.split("/");
   const repoDir = path.join(REPOS_DIR, owner, repoName);
@@ -997,6 +1179,17 @@ async function chantShow(params: {
   repo: string;
   spec_id: string;
 }): Promise<string> {
+  // Validate inputs
+  const repoValidation = validateRepoFormat(params.repo);
+  if (!repoValidation.isValid) {
+    return `Error: ${repoValidation.error}`;
+  }
+
+  const specIdValidation = validateSpecId(params.spec_id);
+  if (!specIdValidation.isValid) {
+    return `Error: ${specIdValidation.error}`;
+  }
+
   const { repo, spec_id } = params;
   const [owner, repoName] = repo.split("/");
   const repoDir = path.join(REPOS_DIR, owner, repoName);
@@ -1036,6 +1229,31 @@ async function researchWorkflow(params: {
   issue_number: number;
   research_questions?: string[];
 }): Promise<string> {
+  // Validate inputs
+  const repoValidation = validateRepoFormat(params.repo);
+  if (!repoValidation.isValid) {
+    return `Error: ${repoValidation.error}`;
+  }
+
+  const issueNumberValidation = validatePositiveNumber(
+    params.issue_number,
+    "Issue number",
+    true
+  );
+  if (!issueNumberValidation.isValid) {
+    return `Error: ${issueNumberValidation.error}`;
+  }
+
+  const questionsValidation = validateStringArray(
+    params.research_questions,
+    "Research questions",
+    20,
+    500
+  );
+  if (!questionsValidation.isValid) {
+    return `Error: ${questionsValidation.error}`;
+  }
+
   const { repo, issue_number, research_questions = [] } = params;
   const [owner, repoName] = repo.split("/");
   const repoDir = path.join(REPOS_DIR, owner, repoName);
