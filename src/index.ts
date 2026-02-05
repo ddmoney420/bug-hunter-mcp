@@ -62,6 +62,14 @@ import {
   suggestCategory,
 } from "./taxonomy.js";
 import {
+  generateGraphVisualization,
+  recommendNextConcept,
+  generateMasteryReport,
+  searchConcepts,
+  listAllConcepts,
+  type MasteryStatus,
+} from "./graph.js";
+import {
   validateLesson,
   validateQuiz,
   lessonToMarkdown,
@@ -760,6 +768,55 @@ PRACTICAL EXAMPLES:
         },
       },
       required: ["category"],
+    },
+  },
+  {
+    name: "show_graph",
+    description: `Display the CS concept dependency graph showing how concepts relate.
+
+Shows prerequisites and progression paths for learning. Filter by keyword to focus on
+specific areas like "concurrency" or "types".
+
+FEATURES:
+- ASCII visualization of concept relationships
+- Concepts grouped by difficulty (beginner/intermediate/advanced)
+- Recommended learning paths
+- Keyword filtering for focused exploration
+
+PRACTICAL EXAMPLES:
+- Full graph: show_graph {}
+- Concurrency concepts: show_graph {filter: "concurrency"}
+- Type system path: show_graph {filter: "type"}`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        filter: {
+          type: "string",
+          description: "Optional keyword to filter concepts (e.g., 'concurrency', 'type', 'memory')",
+        },
+      },
+    },
+  },
+  {
+    name: "next_bug",
+    description: `Get personalized recommendations for which concept to learn next.
+
+Based on your mastered concepts, recommends the next concepts that unlock the most
+new learning paths. Shows prerequisite gaps and impact analysis.
+
+PRACTICAL EXAMPLES:
+- Fresh start: next_bug {mastered: []}
+- After basics: next_bug {mastered: ["variables", "functions", "error-handling"]}`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        mastered: {
+          type: "array",
+          items: { type: "string" },
+          description: "List of concept IDs you've mastered (e.g., ['variables', 'functions'])",
+        },
+      },
+      required: ["mastered"],
     },
   },
   {
@@ -2757,6 +2814,74 @@ async function getStrategyForCategory(params: {
 }
 
 /**
+ * Display the CS concept dependency graph
+ */
+async function showGraph(params: { filter?: string }): Promise<string> {
+  if (params.filter) {
+    const matches = searchConcepts(params.filter);
+    if (matches.length === 0) {
+      return `No concepts matching "${params.filter}". Try: concurrency, type, memory, error, async`;
+    }
+    let output = `# Concept Graph: "${params.filter}"\n\nFound ${matches.length} matching concept(s):\n\n`;
+    for (const concept of matches) {
+      output += `## ${concept.name}\n`;
+      output += `**Difficulty:** ${concept.difficulty}\n`;
+      output += `**Description:** ${concept.description}\n`;
+      if (concept.prerequisites.length > 0) {
+        output += `**Prerequisites:** ${concept.prerequisites.join(", ")}\n`;
+      }
+      if (concept.relatedConcepts && concept.relatedConcepts.length > 0) {
+        output += `**Related:** ${concept.relatedConcepts.join(", ")}\n`;
+      }
+      output += "\n";
+    }
+    return output;
+  }
+  return generateGraphVisualization();
+}
+
+/**
+ * Recommend next concepts to learn based on mastered concepts
+ */
+async function nextBug(params: { mastered: string[] }): Promise<string> {
+  const mastered = params.mastered || [];
+  const masteredSet = new Set(mastered);
+  const allConcepts = listAllConcepts();
+
+  const recommendation = recommendNextConcept(masteredSet);
+  let output = `# Next Concept Recommendations\n\n`;
+  output += `**Mastered:** ${mastered.length > 0 ? mastered.join(", ") : "none yet"}\n`;
+  output += `**Progress:** ${mastered.length}/${allConcepts.length} concepts\n\n`;
+
+  if (!recommendation) {
+    output += "You've mastered all available concepts! Impressive.\n";
+  } else {
+    const concept = allConcepts.find((c) => c.id === recommendation.conceptId);
+    if (concept) {
+      output += `## Recommended Next: ${concept.name}\n\n`;
+      output += `**Difficulty:** ${concept.difficulty}\n`;
+      output += `**Why:** ${recommendation.reason}\n`;
+      output += `${concept.description}\n\n`;
+      if (concept.prerequisites.length > 0) {
+        const missing = concept.prerequisites.filter((p) => !masteredSet.has(p));
+        if (missing.length > 0) {
+          output += `**Missing prerequisites:** ${missing.join(", ")}\n`;
+        }
+      }
+    }
+  }
+
+  const masteryStatuses: MasteryStatus[] = allConcepts.map((c) => ({
+    conceptId: c.id,
+    mastered: masteredSet.has(c.id),
+    depth: masteredSet.has(c.id) ? "deep" as const : "surface" as const,
+    bugsCompleted: masteredSet.has(c.id) ? 1 : 0,
+  }));
+  output += "\n" + generateMasteryReport(masteryStatuses);
+  return output;
+}
+
+/**
  * Generate a new lesson entry following the enhanced template
  */
 async function newLesson(params: {
@@ -3362,6 +3487,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case "get_strategy":
         result = await getStrategyForCategory(args as any);
+        break;
+      case "show_graph":
+        result = await showGraph(args as any);
+        break;
+      case "next_bug":
+        result = await nextBug(args as any);
         break;
       case "new_lesson":
         result = await newLesson(args as any);
