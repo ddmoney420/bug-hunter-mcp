@@ -66,6 +66,23 @@ import {
   createLessonTemplate,
   type LessonTemplate,
 } from "./lessons.js";
+import {
+  ACHIEVEMENTS,
+  getUnlockedAchievements,
+  getNearlyUnlockedAchievements,
+  getAchievementStats,
+  type PlayerProfile,
+} from "./achievements.js";
+import {
+  loadProfile,
+  saveProfile,
+  getPublicProfileSummary,
+  listProfiles,
+  exportProfileJSON,
+  exportProfileMarkdown,
+  recordBugSolved,
+  recordQuizPassed,
+} from "./profile.js";
 
 const execAsync = promisify(exec);
 
@@ -787,6 +804,55 @@ The tool checks:
           description: "Optional: show detailed validation report (default: false). Includes warnings and suggestions for improvements.",
         },
       },
+    },
+  },
+  {
+    name: "get_player_profile",
+    description: `Display a player's achievements and progress in the gamification system.
+
+This tool shows a developer's achievement badges, concept mastery, and progress
+toward unlocking additional achievements. Provides a public showcase of
+specializations and learning milestones.
+
+The profile includes:
+- Achievements unlocked and total available
+- Bugs solved and quizzes passed
+- Concepts mastered and specialization levels
+- Current and longest streak
+- Nearly-unlocked achievements (>50% progress)
+
+TYPICAL WORKFLOW:
+1. Record a bug fix: record_bug_solved {developer: "alice", language: "rust", concepts: ["concurrency"]}
+2. Get profile: get_player_profile {developer: "alice"}
+3. Export for sharing: get_player_profile {developer: "alice", format: "markdown"}
+
+PRACTICAL EXAMPLES:
+- View your achievements: get_player_profile {developer: "alice"}
+- Export as markdown for GitHub: get_player_profile {developer: "alice", format: "markdown"}
+- Export as JSON for integration: get_player_profile {developer: "alice", format: "json"}
+- List all developers: get_player_profile {list_all: true}`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        developer: {
+          type: "string",
+          description: "Developer ID or username to fetch profile for (e.g., 'alice'). Optional if list_all is true.",
+        },
+        format: {
+          type: "string",
+          enum: ["text", "json", "markdown"],
+          description: "Optional: output format (default: text). Use 'markdown' for GitHub-ready export or 'json' for integration.",
+        },
+        list_all: {
+          type: "boolean",
+          description: "Optional: list all developers with profiles instead of showing one. Default: false.",
+        },
+        include_nearly_unlocked: {
+          type: "boolean",
+          description: "Optional: include achievements close to being unlocked (>50% progress). Default: true.",
+        },
+      },
+      required: [],
     },
   },
 ];
@@ -2531,6 +2597,97 @@ const server = new Server(
   }
 );
 
+/**
+ * Get player profile with achievements and progress
+ */
+async function getPlayerProfile(params: {
+  developer?: string;
+  format?: "text" | "json" | "markdown";
+  list_all?: boolean;
+  include_nearly_unlocked?: boolean;
+}): Promise<string> {
+  const { developer, format = "text", list_all = false, include_nearly_unlocked = true } = params;
+
+  if (list_all) {
+    const developers = listProfiles();
+    if (developers.length === 0) {
+      return "No developer profiles found. Use record_bug_solved or record_quiz_passed to create profiles.";
+    }
+
+    const summaries = developers.map(dev => getPublicProfileSummary(dev));
+    const output = summaries
+      .map(
+        s => `👤 ${s.developer}\n` +
+          `   Bugs: ${s.stats.totalBugsSolved} | Quizzes: ${s.stats.totalQuizzesPassed} | ` +
+          `Concepts: ${s.stats.conceptsMastered} | Streak: ${s.stats.longestStreak}\n` +
+          `   Achievements: ${s.achievements.unlocked}/${s.achievements.total} (${s.achievements.percentage.toFixed(0)}%)`
+      )
+      .join("\n");
+
+    return `📊 All Developer Profiles\n\n${output}`;
+  }
+
+  if (!developer) {
+    return "Error: 'developer' parameter required. Use list_all: true to see all profiles.";
+  }
+
+  const profile = loadProfile(developer);
+  const stats = getAchievementStats(profile);
+  const unlockedAchievements = getUnlockedAchievements(profile);
+  const nearlyUnlocked = include_nearly_unlocked ? getNearlyUnlockedAchievements(profile) : [];
+
+  if (format === "json") {
+    return exportProfileJSON(developer);
+  }
+
+  if (format === "markdown") {
+    return exportProfileMarkdown(developer);
+  }
+
+  // Text format (default)
+  let output = `🏆 ${developer}'s Bug Hunter Profile\n\n`;
+
+  output += `📈 Stats\n`;
+  output += `   Bugs Solved: ${profile.totalBugsSolved}\n`;
+  output += `   Quizzes Passed: ${profile.totalQuizzesPassed}\n`;
+  output += `   Concepts Mastered: ${profile.conceptsMastered.length}\n`;
+  output += `   Current Streak: ${profile.currentStreak} days\n`;
+  output += `   Longest Streak: ${profile.longestStreak} days\n\n`;
+
+  output += `🎖️ Achievements\n`;
+  output += `   Unlocked: ${stats.totalUnlocked}/${stats.totalAvailable} (${stats.percentComplete.toFixed(1)}%)\n\n`;
+
+  if (unlockedAchievements.length > 0) {
+    output += `✅ Unlocked (${unlockedAchievements.length}):\n`;
+    unlockedAchievements.forEach(a => {
+      output += `   ${a.icon} ${a.name} (${a.rarity})\n`;
+    });
+    output += "\n";
+  }
+
+  if (nearlyUnlocked.length > 0) {
+    output += `⏳ Nearly Unlocked:\n`;
+    nearlyUnlocked.forEach(({ achievement, progress }) => {
+      const pct = progress.percentage.toFixed(0);
+      output += `   ${achievement.icon} ${achievement.name} - ${progress.current}/${progress.target} (${pct}%)\n`;
+    });
+    output += "\n";
+  }
+
+  if (Object.keys(profile.specializations).length > 0) {
+    const topSpecializations = Object.entries(profile.specializations)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5);
+
+    output += `⭐ Top Specializations:\n`;
+    topSpecializations.forEach(([concept, level]) => {
+      output += `   ${concept}: Level ${level.toFixed(1)}\n`;
+    });
+  }
+
+  return output;
+}
+
 // Handle tool listing
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools,
@@ -2583,6 +2740,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case "validate_lesson":
         result = await validateLessonTool(args as any);
+        break;
+      case "get_player_profile":
+        result = await getPlayerProfile(args as any);
         break;
       default:
         result = `Unknown tool: ${name}`;
