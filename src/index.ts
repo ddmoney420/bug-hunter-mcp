@@ -62,9 +62,15 @@ import {
 } from "./taxonomy.js";
 import {
   validateLesson,
+  validateQuiz,
   lessonToMarkdown,
   createLessonTemplate,
+  checkQuizAnswers,
   type LessonTemplate,
+  type QuizValidationResult,
+  type QuizAttemptResult,
+  type QuizQuestion,
+  type UserQuizAnswer,
 } from "./lessons.js";
 import {
   ACHIEVEMENTS,
@@ -82,6 +88,8 @@ import {
   exportProfileMarkdown,
   recordBugSolved,
   recordQuizPassed,
+  recordQuizAttempt,
+  getConceptRetentionAnalytics,
 } from "./profile.js";
 
 const execAsync = promisify(exec);
@@ -804,6 +812,193 @@ The tool checks:
           description: "Optional: show detailed validation report (default: false). Includes warnings and suggestions for improvements.",
         },
       },
+    },
+  },
+  {
+    name: "validate_quiz",
+    description: `Validate a quiz has proper structure for the lesson template.
+
+This tool checks that a quiz follows the enhanced template format:
+- 1-5 questions (each 1-500 characters)
+- Each question has exactly 4 options
+- Each option has 4-200 characters of text
+- Exactly one option is marked as correct (isCorrect: true)
+- All required fields are properly typed
+
+Returns detailed validation errors and warnings if the quiz structure is invalid.
+
+TYPICAL WORKFLOW:
+1. Create a quiz in your lesson entry
+2. validate_quiz {quiz_json: {quizQuestions: [...]}}
+3. Review validation errors and fix any issues
+4. The quiz is now ready for use
+
+PRACTICAL EXAMPLES:
+- Validate quiz structure: validate_quiz {quiz_json: {...}}
+- The tool catches structural issues like:
+  - Missing correct answers
+  - Too many/few options per question
+  - Invalid field types
+  - Text length violations`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        quiz_json: {
+          type: "object",
+          description: "Quiz object to validate (with quizQuestions array). Required: the quiz data structure.",
+        },
+        verbose: {
+          type: "boolean",
+          description: "Optional: show detailed validation report (default: false). Includes specific error locations.",
+        },
+      },
+      required: ["quiz_json"],
+    },
+  },
+  {
+    name: "validate_quiz_answers",
+    description: `Check a user's quiz answers and provide detailed feedback.
+
+This tool validates user quiz responses against the answer key and returns:
+- Overall score and pass/fail status (pass = ≥80%)
+- Per-question feedback showing:
+  - Which questions were answered correctly
+  - What the user selected vs. the correct answer
+  - Explanatory text for each answer
+- Detailed attempt record with timestamp
+
+Returns a QuizAttemptResult with comprehensive scoring details.
+
+TYPICAL WORKFLOW:
+1. User completes a quiz in LESSONS.md
+2. validate_quiz_answers {quiz_questions: [...], user_answers: [{questionIndex: 0, selectedOptionIndex: 2}, ...]}
+3. System returns score, pass/fail status, and detailed feedback
+4. Results can be recorded with record_quiz_attempt
+
+PRACTICAL EXAMPLES:
+- Check user quiz: validate_quiz_answers {quiz_questions: [...], user_answers: [{...}, {...}]}
+- The tool returns:
+  - Score: 4/5 correct, 80% (pass ✓)
+  - For each question: question text, selected answer, correct answer
+  - Attempt timestamp for record-keeping`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        quiz_questions: {
+          type: "array",
+          description: "Array of quiz questions (QuizQuestion[] from lesson). Required: the quiz definition.",
+        },
+        user_answers: {
+          type: "array",
+          description: "Array of user answers [{questionIndex, selectedOptionIndex}, ...]. Required: what the user selected.",
+        },
+        quiz_id: {
+          type: "string",
+          description: "Optional: identifier for this quiz (for logging). Default: 'unknown'.",
+        },
+      },
+      required: ["quiz_questions", "user_answers"],
+    },
+  },
+  {
+    name: "record_quiz_attempt",
+    description: `Record a user's quiz attempt and update concept retention metrics.
+
+This tool records quiz performance for a specific concept and updates the player's
+retention metrics including:
+- Quiz attempts count for the concept
+- Pass/fail status and score
+- Historical attempt record with timestamp
+- Updated pass rate percentage
+
+The recorded data feeds into concept retention analytics and achievement unlocking.
+
+TYPICAL WORKFLOW:
+1. User completes quiz: validate_quiz_answers {...}
+2. Record the attempt: record_quiz_attempt {developer: "alice", concept: "race-conditions", score: 4, total_questions: 5, percentage_correct: 80, passed: true}
+3. Metrics updated: Alice's race-conditions concept now has 1 passing attempt
+4. Use get_concept_retention to see updated analytics
+
+PRACTICAL EXAMPLES:
+- Record passing quiz: record_quiz_attempt {developer: "alice", concept: "async-await", score: 4, total_questions: 5, percentage_correct: 80, passed: true}
+- Record failing quiz: record_quiz_attempt {developer: "alice", concept: "memory-management", score: 3, total_questions: 5, percentage_correct: 60, passed: false}`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        developer: {
+          type: "string",
+          description: "Developer ID/username to record the quiz attempt for. Required: identifies whose profile to update.",
+        },
+        concept: {
+          type: "string",
+          description: "CS concept being tested (e.g., 'race-conditions', 'async-await'). Required: tags the retention metric.",
+        },
+        score: {
+          type: "number",
+          description: "Number of correct answers (0+). Required: combined with total_questions to calculate percentage.",
+        },
+        total_questions: {
+          type: "number",
+          description: "Total questions in the quiz (1+). Required: used to calculate percentage correct.",
+        },
+        percentage_correct: {
+          type: "number",
+          description: "Percentage of questions answered correctly (0-100). Required: used for pass/fail determination.",
+        },
+        passed: {
+          type: "boolean",
+          description: "Whether the user passed (>=80%). Required: affects specialization boost.",
+        },
+      },
+      required: ["developer", "concept", "score", "total_questions", "percentage_correct", "passed"],
+    },
+  },
+  {
+    name: "get_concept_retention",
+    description: `Analyze concept retention metrics for a developer.
+
+This tool shows quiz performance and retention data for a developer across all tested concepts:
+- Total concepts tested
+- Average pass rate across all concepts
+- Strong concepts (≥80% pass rate)
+- Weak concepts (<60% pass rate) flagged for review
+- Historical attempts for each concept
+
+Helps identify learning gaps and track mastery progress over time.
+
+TYPICAL WORKFLOW:
+1. User completes multiple quizzes over time
+2. get_concept_retention {developer: "alice"}
+3. See which concepts need more review
+4. Recommend re-studying weak concepts
+5. Track progress as pass rates improve
+
+PRACTICAL EXAMPLES:
+- View retention analytics: get_concept_retention {developer: "alice"}
+- See weak concepts needing review: get_concept_retention {developer: "alice"} (shows concepts < 60%)
+- The tool returns:
+  - Average pass rate across all concepts
+  - List of strong concepts (ready to advance)
+  - List of weak concepts (need review)
+  - Detailed history for each concept`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        developer: {
+          type: "string",
+          description: "Developer ID/username to analyze retention for. Required: identifies whose profile to read.",
+        },
+        format: {
+          type: "string",
+          enum: ["text", "json", "markdown"],
+          description: "Optional: output format (default: text). Use 'markdown' for GitHub or 'json' for integration.",
+        },
+        include_history: {
+          type: "boolean",
+          description: "Optional: include full attempt history for each concept (default: false). Shows each quiz attempt with date and score.",
+        },
+      },
+      required: ["developer"],
     },
   },
   {
@@ -2583,6 +2778,253 @@ function formatValidationResult(
 }
 
 /**
+ * Validate a quiz structure
+ */
+async function validateQuizTool(params: {
+  quiz_json?: any;
+  verbose?: boolean;
+}): Promise<string> {
+  const { quiz_json, verbose = false } = params;
+
+  if (!quiz_json) {
+    return "Error: 'quiz_json' parameter is required";
+  }
+
+  const result = validateQuiz(quiz_json);
+
+  let output = "\n# Quiz Validation\n";
+  output += `Status: ${result.isValid ? "✓ VALID" : "✗ INVALID"}\n\n`;
+
+  if (result.errors.length > 0) {
+    output += `## Errors (${result.errors.length})\n`;
+    result.errors.forEach((err) => {
+      output += `- ✗ ${err}\n`;
+    });
+    output += "\n";
+  }
+
+  if (result.warnings.length > 0) {
+    output += `## Warnings (${result.warnings.length})\n`;
+    result.warnings.forEach((warn) => {
+      output += `- ⚠ ${warn}\n`;
+    });
+    output += "\n";
+  }
+
+  if (result.isValid) {
+    const questionCount = quiz_json.quizQuestions?.length || 0;
+    output += `✓ Quiz is valid with ${questionCount} question${questionCount !== 1 ? "s" : ""}\n`;
+    output += "This quiz is ready for use in lessons.\n";
+  } else {
+    output += "\nFix the errors above to make the quiz valid.\n";
+  }
+
+  if (verbose && result.isValid) {
+    output += "\n## Quiz Structure Requirements\n";
+    output += "✓ 1-5 questions per quiz\n";
+    output += "✓ Exactly 4 options per question\n";
+    output += "✓ Exactly one correct answer per question\n";
+    output += "✓ All text fields non-empty and within character limits\n";
+  }
+
+  return output;
+}
+
+/**
+ * Check quiz answers and return detailed results
+ */
+async function validateQuizAnswersTool(params: {
+  quiz_questions?: any[];
+  user_answers?: any[];
+  quiz_id?: string;
+}): Promise<string> {
+  const { quiz_questions, user_answers, quiz_id = "unknown" } = params;
+
+  if (!quiz_questions || !Array.isArray(quiz_questions)) {
+    return "Error: 'quiz_questions' must be a non-empty array";
+  }
+
+  if (!user_answers || !Array.isArray(user_answers)) {
+    return "Error: 'user_answers' must be a non-empty array";
+  }
+
+  if (quiz_questions.length === 0) {
+    return "Error: Quiz must have at least one question";
+  }
+
+  if (user_answers.length !== quiz_questions.length) {
+    return `Error: Expected ${quiz_questions.length} answers, got ${user_answers.length}`;
+  }
+
+  try {
+    const result = checkQuizAnswers(quiz_questions, user_answers, quiz_id);
+
+    let output = "\n# Quiz Results\n";
+    output += `Quiz ID: ${result.quizId}\n`;
+    output += `Score: **${result.score}/${result.totalQuestions}** (${result.percentageCorrect}%)\n`;
+    output += `Status: ${result.passed ? "✓ PASS" : "✗ FAIL"}\n\n`;
+
+    output += "## Answer Breakdown\n\n";
+    result.answers.forEach((answer, idx) => {
+      const status = answer.isCorrect ? "✓" : "✗";
+      output += `### Q${idx + 1}: ${status}\n`;
+      output += `**Question:** ${answer.question}\n`;
+      output += `**Your answer:** ${answer.selectedText}\n`;
+      output += `**Correct answer:** ${answer.correctText}\n\n`;
+    });
+
+    output += "## Feedback\n";
+    if (result.passed) {
+      output += "Excellent! You've mastered this concept.\n";
+    } else {
+      const wrongCount = result.totalQuestions - result.score;
+      output += `You got ${wrongCount} question${wrongCount !== 1 ? "s" : ""} wrong. Review the explanations above and try again.\n`;
+    }
+
+    output += `\nAttempt recorded at: ${result.attemptDate}\n`;
+
+    return output;
+  } catch (error: any) {
+    return `Error checking quiz answers: ${error.message}`;
+  }
+}
+
+/**
+ * Record a quiz attempt for a developer
+ */
+async function recordQuizAttemptTool(params: {
+  developer?: string;
+  concept?: string;
+  score?: number;
+  total_questions?: number;
+  percentage_correct?: number;
+  passed?: boolean;
+}): Promise<string> {
+  const { developer, concept, score, total_questions, percentage_correct, passed } = params;
+
+  // Validate required fields
+  if (!developer) {
+    return "Error: 'developer' is required";
+  }
+  if (!concept) {
+    return "Error: 'concept' is required";
+  }
+  if (score === undefined || total_questions === undefined || percentage_correct === undefined || passed === undefined) {
+    return "Error: 'score', 'total_questions', 'percentage_correct', and 'passed' are all required";
+  }
+
+  try {
+    const profile = recordQuizAttempt(developer, {
+      concept,
+      score,
+      totalQuestions: total_questions,
+      percentageCorrect: percentage_correct,
+      passed,
+    });
+
+    let output = "\n# Quiz Attempt Recorded\n";
+    output += `Developer: ${developer}\n`;
+    output += `Concept: ${concept}\n`;
+    output += `Score: ${score}/${total_questions} (${percentage_correct}%)\n`;
+    output += `Status: ${passed ? "✓ PASS" : "✗ FAIL"}\n\n`;
+
+    // Get updated retention metrics
+    const metrics = profile.conceptRetention?.[concept];
+    if (metrics) {
+      output += "## Updated Metrics\n";
+      output += `Total Attempts: ${metrics.quizAttempts}\n`;
+      output += `Passed: ${metrics.quizzesPassed}\n`;
+      output += `Pass Rate: ${metrics.passRate}%\n`;
+      output += `Last Attempt: ${metrics.lastAttemptDate}\n`;
+    }
+
+    output += `\nTotal Quizzes Passed: ${profile.totalQuizzesPassed}\n`;
+
+    return output;
+  } catch (error: any) {
+    return `Error recording quiz attempt: ${error.message}`;
+  }
+}
+
+/**
+ * Get concept retention analytics for a developer
+ */
+async function getConceptRetentionTool(params: {
+  developer?: string;
+  format?: "text" | "json" | "markdown";
+  include_history?: boolean;
+}): Promise<string> {
+  const { developer, format = "text", include_history = false } = params;
+
+  if (!developer) {
+    return "Error: 'developer' is required";
+  }
+
+  try {
+    const analytics = getConceptRetentionAnalytics(developer);
+
+    if (format === "json") {
+      return JSON.stringify(analytics, null, 2);
+    }
+
+    let output = "\n# Concept Retention Analytics\n";
+    output += `Developer: ${developer}\n\n`;
+
+    if (analytics.totalConcepts === 0) {
+      output += "No quiz attempts recorded yet. Complete some quizzes to see retention metrics.\n";
+      return output;
+    }
+
+    output += "## Overview\n";
+    output += `- Concepts Tested: **${analytics.totalConcepts}**\n`;
+    output += `- Average Pass Rate: **${analytics.averagePassRate}%**\n\n`;
+
+    if (analytics.strongConcepts.length > 0) {
+      output += "## 💪 Strong Concepts (≥80%)\n\n";
+      analytics.strongConcepts.forEach(([concept, rate]) => {
+        output += `- **${concept}**: ${rate}% pass rate ✓\n`;
+      });
+      output += "\n";
+    }
+
+    if (analytics.weakConcepts.length > 0) {
+      output += "## 📚 Areas for Review (<60%)\n\n";
+      analytics.weakConcepts.forEach(([concept, rate]) => {
+        output += `- **${concept}**: ${rate}% pass rate - Needs review\n`;
+      });
+      output += "\n";
+    }
+
+    if (include_history) {
+      output += "## Detailed History\n\n";
+      analytics.allMetrics.forEach((metric) => {
+        output += `### ${metric.concept}\n`;
+        output += `- Attempts: ${metric.quizAttempts}\n`;
+        output += `- Passed: ${metric.quizzesPassed}\n`;
+        output += `- Pass Rate: ${metric.passRate}%\n`;
+        output += `- Last Attempt: ${metric.lastAttemptDate || "Never"}\n\n`;
+
+        if (metric.attemptHistory.length > 0) {
+          output += `  **Recent Attempts:**\n`;
+          metric.attemptHistory.slice(-3).forEach((attempt) => {
+            output += `  - ${new Date(attempt.date).toLocaleDateString()}: ${attempt.score}/${attempt.totalQuestions} (${attempt.percentageCorrect}%) ${attempt.passed ? "✓" : "✗"}\n`;
+          });
+          output += "\n";
+        }
+      });
+    }
+
+    if (format === "markdown") {
+      output = output.replace(/\*\*/g, "**"); // Ensure markdown formatting
+    }
+
+    return output;
+  } catch (error: any) {
+    return `Error getting concept retention: ${error.message}`;
+  }
+}
+
+/**
  * Main server setup
  */
 const server = new Server(
@@ -2740,6 +3182,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case "validate_lesson":
         result = await validateLessonTool(args as any);
+        break;
+      case "validate_quiz":
+        result = await validateQuizTool(args as any);
+        break;
+      case "validate_quiz_answers":
+        result = await validateQuizAnswersTool(args as any);
+        break;
+      case "record_quiz_attempt":
+        result = await recordQuizAttemptTool(args as any);
+        break;
+      case "get_concept_retention":
+        result = await getConceptRetentionTool(args as any);
         break;
       case "get_player_profile":
         result = await getPlayerProfile(args as any);

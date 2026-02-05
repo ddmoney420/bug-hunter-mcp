@@ -40,6 +40,29 @@ export interface AchievementCondition {
 }
 
 /**
+ * Concept Retention Metrics: Track quiz performance for a specific concept
+ */
+export interface ConceptRetentionMetrics {
+  concept: string;
+  quizAttempts: number;
+  quizzesPassed: number;
+  passRate: number;
+  lastAttemptDate?: string;
+  attemptHistory: QuizAttemptRecord[];
+}
+
+/**
+ * Quiz Attempt Record: Individual quiz attempt for a concept
+ */
+export interface QuizAttemptRecord {
+  date: string;
+  score: number;
+  totalQuestions: number;
+  percentageCorrect: number;
+  passed: boolean;
+}
+
+/**
  * Player profile and stats for achievement tracking
  */
 export interface PlayerProfile {
@@ -50,6 +73,7 @@ export interface PlayerProfile {
   currentStreak: number;
   longestStreak: number;
   achievements: UnlockedAchievement[];
+  conceptRetention?: Record<string, ConceptRetentionMetrics>; // concept -> retention metrics
   lastActivityDate?: string;
 }
 

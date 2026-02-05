@@ -96,6 +96,183 @@ export interface QuizResult {
 }
 
 /**
+ * Quiz Validation Result: Detailed validation of quiz structure
+ */
+export interface QuizValidationResult {
+  isValid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+/**
+ * User Quiz Answer: A user's answer to a single question
+ */
+export interface UserQuizAnswer {
+  questionIndex: number;
+  selectedOptionIndex: number;
+}
+
+/**
+ * Quiz Attempt Result: Result of a user's quiz attempt
+ */
+export interface QuizAttemptResult {
+  quizId: string;
+  score: number;
+  totalQuestions: number;
+  percentageCorrect: number;
+  passed: boolean;
+  attemptDate: string;
+  answers: {
+    questionIndex: number;
+    selectedOptionIndex: number;
+    correctOptionIndex: number;
+    isCorrect: boolean;
+    question: string;
+    selectedText: string;
+    correctText: string;
+  }[];
+}
+
+/**
+ * Validate a quiz has proper structure
+ */
+export function validateQuiz(quiz: any): QuizValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  // Check that quiz questions array exists and is non-empty
+  if (!Array.isArray(quiz.quizQuestions)) {
+    errors.push("Quiz must have a 'quizQuestions' array");
+    return { isValid: false, errors, warnings };
+  }
+
+  if (quiz.quizQuestions.length === 0) {
+    errors.push("Quiz must have at least one question");
+    return { isValid: false, errors, warnings };
+  }
+
+  if (quiz.quizQuestions.length > 5) {
+    errors.push("Quiz must have at most 5 questions");
+  }
+
+  // Validate each question
+  quiz.quizQuestions.forEach((question: any, qIndex: number) => {
+    // Check question text
+    if (!question.question || typeof question.question !== "string") {
+      errors.push(`Question ${qIndex + 1}: Missing or invalid 'question' text`);
+    } else if (question.question.trim().length === 0) {
+      errors.push(`Question ${qIndex + 1}: Question text cannot be empty`);
+    } else if (question.question.length > 500) {
+      errors.push(`Question ${qIndex + 1}: Question text exceeds 500 characters`);
+    }
+
+    // Check options array
+    if (!Array.isArray(question.options)) {
+      errors.push(`Question ${qIndex + 1}: Must have 'options' array`);
+    } else {
+      // Check that there are exactly 4 options
+      if (question.options.length !== 4) {
+        errors.push(
+          `Question ${qIndex + 1}: Must have exactly 4 options, got ${question.options.length}`
+        );
+      }
+
+      // Validate each option
+      let correctCount = 0;
+      question.options.forEach((option: any, oIndex: number) => {
+        // Check option text
+        if (!option.text || typeof option.text !== "string") {
+          errors.push(
+            `Question ${qIndex + 1}, Option ${String.fromCharCode(65 + oIndex)}: Missing or invalid 'text'`
+          );
+        } else if (option.text.trim().length === 0) {
+          errors.push(
+            `Question ${qIndex + 1}, Option ${String.fromCharCode(65 + oIndex)}: Option text cannot be empty`
+          );
+        } else if (option.text.length > 200) {
+          errors.push(
+            `Question ${qIndex + 1}, Option ${String.fromCharCode(65 + oIndex)}: Option text exceeds 200 characters`
+          );
+        }
+
+        // Check isCorrect flag
+        if (typeof option.isCorrect !== "boolean") {
+          errors.push(
+            `Question ${qIndex + 1}, Option ${String.fromCharCode(65 + oIndex)}: 'isCorrect' must be a boolean`
+          );
+        } else if (option.isCorrect) {
+          correctCount++;
+        }
+      });
+
+      // Check that exactly one option is correct
+      if (correctCount !== 1) {
+        errors.push(
+          `Question ${qIndex + 1}: Must have exactly one correct answer, got ${correctCount}`
+        );
+      }
+    }
+  });
+
+  return {
+    isValid: errors.length === 0,
+    errors,
+    warnings,
+  };
+}
+
+/**
+ * Check a user's quiz answers and return detailed results
+ */
+export function checkQuizAnswers(
+  quizQuestions: QuizQuestion[],
+  userAnswers: UserQuizAnswer[],
+  quizId: string = "unknown"
+): QuizAttemptResult {
+  const results = {
+    questionIndex: 0,
+    selectedOptionIndex: 0,
+    correctOptionIndex: 0,
+    isCorrect: false,
+    question: "",
+    selectedText: "",
+    correctText: "",
+  };
+
+  const detailedAnswers = userAnswers.map((answer) => {
+    const question = quizQuestions[answer.questionIndex];
+    const selectedOption = question.options[answer.selectedOptionIndex];
+    const correctOptionIndex = question.options.findIndex((opt) => opt.isCorrect);
+    const correctOption = question.options[correctOptionIndex];
+    const isCorrect = answer.selectedOptionIndex === correctOptionIndex;
+
+    return {
+      questionIndex: answer.questionIndex,
+      selectedOptionIndex: answer.selectedOptionIndex,
+      correctOptionIndex,
+      isCorrect,
+      question: question.question,
+      selectedText: selectedOption.text,
+      correctText: correctOption.text,
+    };
+  });
+
+  const correctCount = detailedAnswers.filter((a) => a.isCorrect).length;
+  const totalQuestions = quizQuestions.length;
+  const percentageCorrect = Math.round((correctCount / totalQuestions) * 100);
+
+  return {
+    quizId,
+    score: correctCount,
+    totalQuestions,
+    percentageCorrect,
+    passed: percentageCorrect >= 80,
+    attemptDate: new Date().toISOString(),
+    answers: detailedAnswers,
+  };
+}
+
+/**
  * Validate that a lesson follows the template structure
  */
 export function validateLesson(lesson: any): {

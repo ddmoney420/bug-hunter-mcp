@@ -7,7 +7,13 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { PlayerProfile, createDefaultProfile, getAchievementStats } from "./achievements.js";
+import {
+  PlayerProfile,
+  createDefaultProfile,
+  getAchievementStats,
+  ConceptRetentionMetrics,
+  QuizAttemptRecord,
+} from "./achievements.js";
 
 /**
  * Get the profiles directory
@@ -121,6 +127,72 @@ export function recordQuizPassed(
 }
 
 /**
+ * Record a quiz attempt with detailed metrics
+ */
+export function recordQuizAttempt(
+  developerId: string,
+  attemptData: {
+    concept: string;
+    score: number;
+    totalQuestions: number;
+    percentageCorrect: number;
+    passed: boolean;
+  }
+): PlayerProfile {
+  const profile = loadProfile(developerId);
+
+  // Initialize conceptRetention if not present
+  if (!profile.conceptRetention) {
+    profile.conceptRetention = {};
+  }
+
+  // Get or create retention metrics for this concept
+  if (!profile.conceptRetention[attemptData.concept]) {
+    profile.conceptRetention[attemptData.concept] = {
+      concept: attemptData.concept,
+      quizAttempts: 0,
+      quizzesPassed: 0,
+      passRate: 0,
+      attemptHistory: [],
+    };
+  }
+
+  const metrics = profile.conceptRetention[attemptData.concept];
+
+  // Record the attempt
+  metrics.quizAttempts++;
+  if (attemptData.passed) {
+    metrics.quizzesPassed++;
+  }
+
+  // Calculate new pass rate
+  metrics.passRate = Math.round((metrics.quizzesPassed / metrics.quizAttempts) * 100);
+
+  // Add to attempt history
+  const now = new Date().toISOString();
+  metrics.attemptHistory.push({
+    date: now,
+    score: attemptData.score,
+    totalQuestions: attemptData.totalQuestions,
+    percentageCorrect: attemptData.percentageCorrect,
+    passed: attemptData.passed,
+  });
+
+  // Update last attempt date
+  metrics.lastAttemptDate = now;
+
+  // Update profile stats
+  if (attemptData.passed) {
+    profile.totalQuizzesPassed++;
+  }
+
+  profile.lastActivityDate = now;
+
+  saveProfile(developerId, profile);
+  return profile;
+}
+
+/**
  * Update streak after activity
  */
 export function updateStreak(developerId: string, isActive: boolean = true): PlayerProfile {
@@ -219,11 +291,64 @@ export function exportProfileJSON(developerId: string): string {
 }
 
 /**
+ * Get concept retention analytics
+ */
+export function getConceptRetentionAnalytics(
+  developerId: string
+): {
+  totalConcepts: number;
+  averagePassRate: number;
+  weakConcepts: Array<[string, number]>;
+  strongConcepts: Array<[string, number]>;
+  allMetrics: ConceptRetentionMetrics[];
+} {
+  const profile = loadProfile(developerId);
+
+  if (!profile.conceptRetention || Object.keys(profile.conceptRetention).length === 0) {
+    return {
+      totalConcepts: 0,
+      averagePassRate: 0,
+      weakConcepts: [],
+      strongConcepts: [],
+      allMetrics: [],
+    };
+  }
+
+  const allMetrics = Object.values(profile.conceptRetention);
+
+  // Calculate average pass rate
+  const totalPassRate = allMetrics.reduce((sum, m) => sum + m.passRate, 0);
+  const averagePassRate =
+    allMetrics.length > 0 ? Math.round(totalPassRate / allMetrics.length) : 0;
+
+  // Find weak concepts (pass rate < 60%)
+  const weakConcepts = allMetrics
+    .filter((m) => m.passRate < 60)
+    .map((m) => [m.concept, m.passRate] as [string, number])
+    .sort((a, b) => a[1] - b[1]);
+
+  // Find strong concepts (pass rate >= 80%)
+  const strongConcepts = allMetrics
+    .filter((m) => m.passRate >= 80)
+    .map((m) => [m.concept, m.passRate] as [string, number])
+    .sort((a, b) => b[1] - a[1]);
+
+  return {
+    totalConcepts: allMetrics.length,
+    averagePassRate,
+    weakConcepts,
+    strongConcepts,
+    allMetrics,
+  };
+}
+
+/**
  * Export profile as Markdown
  */
 export function exportProfileMarkdown(developerId: string): string {
   const profile = loadProfile(developerId);
   const stats = getAchievementStats(profile);
+  const retention = getConceptRetentionAnalytics(developerId);
 
   let markdown = `# 🏆 ${developerId}'s Bug Hunter Profile\n\n`;
 
@@ -256,6 +381,28 @@ export function exportProfileMarkdown(developerId: string): string {
       markdown += `- **${concept}**: Level ${level.toFixed(1)}\n`;
     });
     markdown += "\n";
+  }
+
+  if (retention.totalConcepts > 0) {
+    markdown += `## Concept Retention\n\n`;
+    markdown += `- Concepts Tested: **${retention.totalConcepts}**\n`;
+    markdown += `- Average Pass Rate: **${retention.averagePassRate}%**\n\n`;
+
+    if (retention.strongConcepts.length > 0) {
+      markdown += `### 💪 Strong Concepts (≥80%)\n\n`;
+      retention.strongConcepts.forEach(([concept, rate]) => {
+        markdown += `- **${concept}**: ${rate}% pass rate\n`;
+      });
+      markdown += "\n";
+    }
+
+    if (retention.weakConcepts.length > 0) {
+      markdown += `### 📚 Areas for Review (<60%)\n\n`;
+      retention.weakConcepts.forEach(([concept, rate]) => {
+        markdown += `- **${concept}**: ${rate}% pass rate - needs review\n`;
+      });
+      markdown += "\n";
+    }
   }
 
   if (profile.lastActivityDate) {
