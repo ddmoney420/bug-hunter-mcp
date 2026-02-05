@@ -53,6 +53,13 @@ import {
   validateStringArray,
   type ValidationResult,
 } from "./validators.js";
+import {
+  ISSUE_TAXONOMY,
+  getStrategy,
+  listCategories,
+  searchCategories,
+  suggestCategory,
+} from "./taxonomy.js";
 
 const execAsync = promisify(exec);
 
@@ -620,6 +627,47 @@ CHANT: https://github.com/lex00/chant`,
       required: ["repo", "issue_number"],
     },
   },
+  {
+    name: "get_strategy",
+    description: `Retrieve debugging strategies for an issue category.
+
+This tool provides proven debugging strategies paired with recommended tools for different
+problem types. Use this when you've identified an issue type and need a systematic approach
+to debug it.
+
+TYPICAL WORKFLOW:
+1. hunt_issues → Find an issue and identify problem type
+2. get_strategy {category: "race-condition"} ← You are here
+3. Follow recommended strategies and tools
+4. Apply learnings to fix the issue
+
+CATEGORIES:
+- race-condition: Multi-threaded/async synchronization issues
+- memory-leak: Allocated memory not being freed
+- incorrect-logic: Algorithm or business logic errors
+- api-incompatibility: Version mismatches or API usage errors
+- type-mismatch: Data type incompatibilities
+- null-reference: Null/undefined access errors
+- performance-bottleneck: CPU/memory/I/O performance issues
+- encoding-error: Character encoding mismatches
+- deadlock: Circular waits causing hangs
+- assertion-error: Broken invariants or preconditions
+
+PRACTICAL EXAMPLES:
+- Debug a race condition: get_strategy {category: "race-condition"}
+- Find memory leaks: get_strategy {category: "memory-leak"}
+- Understand type errors: get_strategy {category: "type-mismatch"}`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        category: {
+          type: "string",
+          description: "Issue category ID to get debugging strategies for. Valid categories: race-condition, memory-leak, incorrect-logic, api-incompatibility, type-mismatch, null-reference, performance-bottleneck, encoding-error, deadlock, assertion-error.",
+        },
+      },
+      required: ["category"],
+    },
+  },
 ];
 
 /**
@@ -726,8 +774,21 @@ async function huntIssues(params: {
       result += `## [${issue.repo}#${issue.number}] ${issue.title}\n`;
       result += `URL: ${issue.url}\n`;
       result += `Labels: ${issue.labels}\n`;
-      result += `Comments: ${issue.comments} | Updated: ${issue.updated.split("T")[0]}\n\n`;
+      result += `Comments: ${issue.comments} | Updated: ${issue.updated.split("T")[0]}\n`;
+
+      // Suggest issue category based on title
+      const suggestedCategory = suggestCategory(issue.title, "");
+      if (suggestedCategory) {
+        result += `📊 Suggested Category: ${suggestedCategory}\n`;
+      }
+
+      result += `\n`;
     }
+
+    result += `\n## Next Steps\n`;
+    result += `1. Use \`get_strategy\` to understand debugging approach for any issue\n`;
+    result += `2. Use \`analyze_repo\` to study the codebase\n`;
+    result += `3. Use \`scaffold_solution\` to create starter code\n`;
 
     return result;
   } catch (error: any) {
@@ -2080,6 +2141,57 @@ TODO:
 }
 
 /**
+ * Get debugging strategy for an issue category
+ */
+async function getStrategyForCategory(params: {
+  category: string;
+}): Promise<string> {
+  const { category } = params;
+
+  // Validate category exists
+  const validCategories = listCategories();
+  if (!validCategories.includes(category)) {
+    return `Error: Unknown category '${category}'. Valid categories: ${validCategories.join(
+      ", "
+    )}`;
+  }
+
+  const categoryInfo = getStrategy(category);
+  if (!categoryInfo) {
+    return `Error: Category not found: ${category}`;
+  }
+
+  let result = `# Debugging Strategy: ${categoryInfo.name}\n\n`;
+  result += `## Description\n${categoryInfo.description}\n\n`;
+
+  result += `## Keywords\n${categoryInfo.keywords.join(", ")}\n\n`;
+
+  result += `## Debugging Strategies\n\n`;
+  for (const strategy of categoryInfo.strategies) {
+    result += `### ${strategy.name}\n`;
+    result += `${strategy.description}\n\n`;
+
+    result += `**Steps:**\n`;
+    for (const step of strategy.steps) {
+      result += `- ${step}\n`;
+    }
+
+    result += `\n**Recommended Tools:**\n`;
+    for (const tool of strategy.tools) {
+      result += `- ${tool}\n`;
+    }
+    result += `\n`;
+  }
+
+  result += `## Success Tips\n`;
+  for (const tip of categoryInfo.successTips) {
+    result += `- ${tip}\n`;
+  }
+
+  return result;
+}
+
+/**
  * Main server setup
  */
 const server = new Server(
@@ -2137,6 +2249,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case "filter_lessons":
         result = await filterLessons(args as any);
+        break;
+      case "get_strategy":
+        result = await getStrategyForCategory(args as any);
         break;
       default:
         result = `Unknown tool: ${name}`;
