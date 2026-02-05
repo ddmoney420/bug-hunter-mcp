@@ -10,6 +10,7 @@
  * - hunt_issues: Find good first issues matching your skills
  * - analyze_repo: Clone and analyze a repository structure
  * - scaffold_solution: Generate starter implementation for an issue
+ * - scaffold_reproduce_environment: Generate reproducible environment templates
  * - claim_issue: Comment on an issue to claim it
  * - generate_chant_spec: Generate a Chant driver spec from an issue
  * - chant_init: Initialize Chant in a repository
@@ -91,6 +92,15 @@ import {
   recordQuizAttempt,
   getConceptRetentionAnalytics,
 } from "./profile.js";
+import {
+  detectTechStack,
+  generateDockerfile,
+  generateDockerCompose,
+  generateSetupScript,
+  generateBatchScript,
+  generateEnvironmentSummary,
+  type TechStack,
+} from "./reproduce-environment.js";
 
 const execAsync = promisify(exec);
 
@@ -202,8 +212,9 @@ diving deeper with analyze_repo.
 TYPICAL WORKFLOW:
 1. hunt_issues {language: "rust", min_stars: 100} → Find beginner Rust issues in established repos
 2. analyze_repo {repo: "owner/name"} → Study the codebase you found
-3. scaffold_solution → Generate starter code
-4. claim_issue → Let maintainers know you're working on it
+3. scaffold_reproduce_environment → Set up reproducible environment
+4. scaffold_solution → Generate starter code
+5. claim_issue → Let maintainers know you're working on it
 
 PRACTICAL EXAMPLES:
 - Find Zig issues: hunt_issues {language: "zig", limit: 5}
@@ -251,8 +262,9 @@ It clones the repo (or updates existing clone), then provides:
 TYPICAL WORKFLOW:
 1. hunt_issues → Find an interesting issue
 2. analyze_repo {repo: "owner/name"} ← You are here
-3. scaffold_solution → Generate starter implementation
-4. claim_issue → Comment on the issue
+3. scaffold_reproduce_environment → Generate environment templates
+4. scaffold_solution → Generate starter implementation
+5. claim_issue → Comment on the issue
 
 PRACTICAL EXAMPLES:
 - Analyze zigtools/zls: analyze_repo {repo: "zigtools/zls"}
@@ -289,10 +301,11 @@ Based on project type detection (Rust, Zig, Go, TypeScript, Python, etc.), it ge
 TYPICAL WORKFLOW:
 1. hunt_issues → Find an issue
 2. analyze_repo → Understand the codebase
-3. scaffold_solution {repo: "owner/name", issue_number: 42} ← You are here
-4. Review NOTES.md in the _scaffold_issue_42 directory
-5. Study the actual codebase
-6. Implement your solution using the scaffold as a starting point
+3. scaffold_reproduce_environment → Set up dev environment
+4. scaffold_solution {repo: "owner/name", issue_number: 42} ← You are here
+5. Review NOTES.md in the _scaffold_issue_42 directory
+6. Study the actual codebase
+7. Implement your solution using the scaffold as a starting point
 
 PRACTICAL EXAMPLE:
 - Scaffold for Rust project: scaffold_solution {repo: "rust-lang/rust", issue_number: 123}
@@ -317,6 +330,56 @@ Use it as a starting point, then move completed files to appropriate locations i
         },
       },
       required: ["repo", "issue_number"],
+    },
+  },
+  {
+    name: "scaffold_reproduce_environment",
+    description: `Generate reproducible environment templates for bug debugging and testing.
+
+This tool auto-detects the repository's tech stack and generates minimal, reproducible
+environments using Docker, docker-compose, or shell scripts. It removes environment setup
+friction and lets developers focus on understanding bugs rather than wrestling with dependencies.
+
+SUPPORTED LANGUAGES:
+- JavaScript/TypeScript (Node.js, Deno, Bun)
+- Python (Django, FastAPI, Flask)
+- Go, Rust, Java, C#/.NET
+- Auto-detects frameworks and build systems
+
+GENERATED TEMPLATES:
+- Dockerfile: Containerized development environment
+- docker-compose.yml: Multi-service setup (databases, caches, services)
+- setup.sh: Unix/Linux/macOS automated setup script
+- setup.bat: Windows automated setup script
+- ENVIRONMENT.md: Setup guide with troubleshooting
+
+TYPICAL WORKFLOW:
+1. hunt_issues → Find an issue
+2. analyze_repo {repo: "owner/name"}
+3. scaffold_reproduce_environment {repo: "owner/name"} ← You are here
+4. Use generated templates to reproduce the bug locally
+5. Implement your fix in the prepared environment
+
+PRACTICAL EXAMPLES:
+- Scaffold for Node.js project: scaffold_reproduce_environment {repo: "expressjs/express"}
+  Creates: Dockerfile, docker-compose.yml, setup.sh, setup.bat, ENVIRONMENT.md
+- Scaffold for Python Django app: scaffold_reproduce_environment {repo: "django/django"}
+  Creates templates with PostgreSQL and Redis services
+
+The generated files are placed in the cloned repo directory and are ready to use immediately.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        repo: {
+          type: "string",
+          description: "Repository in 'owner/repo' format (e.g., 'expressjs/express'). Required: determines which repo to analyze and where to output files.",
+        },
+        output_dir: {
+          type: "string",
+          description: "Optional: custom output directory for templates. Default: repo root in ~/Developer/bug-hunter-repos/",
+        },
+      },
+      required: ["repo"],
     },
   },
   {
@@ -1436,6 +1499,126 @@ ${labels.join(", ")}
     return result;
   } catch (error: any) {
     return `Error scaffolding solution: ${error.message}`;
+  }
+}
+
+/**
+ * Scaffold a reproducible environment for debugging and testing
+ */
+async function scaffoldReproduceEnvironment(params: {
+  repo: string;
+  output_dir?: string;
+}): Promise<string> {
+  // Validate inputs
+  const repoValidation = validateRepoFormat(params.repo);
+  if (!repoValidation.isValid) {
+    return `Error: ${repoValidation.error}`;
+  }
+
+  const outputDirValidation = validateDirectoryPath(
+    params.output_dir,
+    "Output directory",
+    false
+  );
+  if (!outputDirValidation.isValid) {
+    return `Error: ${outputDirValidation.error}`;
+  }
+
+  const { repo, output_dir } = params;
+  const [owner, repoName] = repo.split("/");
+  const repoDir = path.join(REPOS_DIR, owner, repoName);
+  const outputDirPath = output_dir || repoDir;
+
+  let result = `# Bug Reproduction Environment Setup\n\n`;
+  result += `Repository: ${repo}\n\n`;
+
+  try {
+    // Ensure repo is cloned
+    if (!fs.existsSync(repoDir)) {
+      result += `Cloning repository...\n`;
+      fs.mkdirSync(path.dirname(repoDir), { recursive: true });
+      execSync(`git clone --depth 1 https://github.com/${repo}.git ${repoDir}`, {
+        stdio: "pipe",
+      });
+      result += `Repository cloned to: ${repoDir}\n\n`;
+    }
+
+    // Detect tech stack
+    const techStack = detectTechStack(repoDir);
+    result += `## Detected Technology Stack\n\n`;
+    result += `- Language: ${techStack.language}\n`;
+    result += `- Framework: ${techStack.framework}\n`;
+    if (techStack.packageManager) {
+      result += `- Package Manager: ${techStack.packageManager}\n`;
+    }
+    if (techStack.buildSystem) {
+      result += `- Build System: ${techStack.buildSystem}\n`;
+    }
+    if (techStack.testFramework) {
+      result += `- Test Framework: ${techStack.testFramework}\n`;
+    }
+    result += `\n`;
+
+    // Generate Dockerfile
+    const dockerfile = generateDockerfile(techStack);
+    const dockerfilePath = path.join(outputDirPath, "Dockerfile");
+    fs.writeFileSync(dockerfilePath, dockerfile);
+    result += `✓ Generated: Dockerfile\n`;
+
+    // Generate docker-compose.yml
+    const dockerCompose = generateDockerCompose(techStack);
+    const dockerComposePath = path.join(outputDirPath, "docker-compose.yml");
+    fs.writeFileSync(dockerComposePath, dockerCompose);
+    result += `✓ Generated: docker-compose.yml\n`;
+
+    // Generate setup.sh script
+    const setupScript = generateSetupScript(techStack);
+    const setupScriptPath = path.join(outputDirPath, "setup.sh");
+    fs.writeFileSync(setupScriptPath, setupScript);
+    // Make executable
+    fs.chmodSync(setupScriptPath, 0o755);
+    result += `✓ Generated: setup.sh (executable)\n`;
+
+    // Generate setup.bat script
+    const batchScript = generateBatchScript(techStack);
+    const batchScriptPath = path.join(outputDirPath, "setup.bat");
+    fs.writeFileSync(batchScriptPath, batchScript);
+    result += `✓ Generated: setup.bat\n`;
+
+    // Generate environment guide
+    const envSummary = generateEnvironmentSummary(techStack, repoDir);
+    const envSummaryPath = path.join(outputDirPath, "ENVIRONMENT.md");
+    fs.writeFileSync(envSummaryPath, envSummary);
+    result += `✓ Generated: ENVIRONMENT.md\n`;
+
+    result += `\n## Quick Start\n\n`;
+    result += `All templates have been generated in: ${outputDirPath}\n\n`;
+
+    result += `### Option 1: Docker (Recommended)\n`;
+    result += `\`\`\`bash\n`;
+    result += `docker build -t ${repoName}-repro .\n`;
+    result += `docker run -it -v $(pwd):/app ${repoName}-repro\n`;
+    result += `\`\`\`\n\n`;
+
+    result += `### Option 2: Docker Compose\n`;
+    result += `\`\`\`bash\n`;
+    result += `docker-compose up\n`;
+    result += `\`\`\`\n\n`;
+
+    result += `### Option 3: Manual Setup\n`;
+    result += `\`\`\`bash\n`;
+    result += `# Unix/Linux/macOS\n`;
+    result += `chmod +x setup.sh\n`;
+    result += `./setup.sh\n`;
+    result += `\n# Windows\n`;
+    result += `setup.bat\n`;
+    result += `\`\`\`\n\n`;
+
+    result += `For detailed setup instructions and troubleshooting, see ENVIRONMENT.md\n`;
+
+    return result;
+  } catch (error: any) {
+    return `Error scaffolding reproduction environment: ${error.message}`;
   }
 }
 
@@ -3151,6 +3334,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case "scaffold_solution":
         result = await scaffoldSolution(args as any);
+        break;
+      case "scaffold_reproduce_environment":
+        result = await scaffoldReproduceEnvironment(args as any);
         break;
       case "claim_issue":
         result = await claimIssue(args as any);
