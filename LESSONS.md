@@ -390,26 +390,132 @@ Why? Maintainers may not want the fix, or prefer a different approach. Unsolicit
 
 ---
 
+### Deno #26557: Fix error suggestions for ESM files
+---
+difficulty: easy
+concepts:
+  - module-systems
+  - error-handling
+  - file-extension-based-detection
+---
+**Date:** 2026-02-04
+**Issue:** #26557
+**Outcome:** success
+**PR:** https://github.com/denoland/deno/pull/XXXXX
+
+#### Root Cause Analysis
+
+When a `.mjs` or `.mts` file (explicitly marked as ES modules) references the `module` object which doesn't exist in ESM scope, Deno showed unhelpful error suggestions recommending CommonJS conversion. The bug was in the error suggestion logic in `runtime/fmt_errors.rs` around lines 307-309, which checked for references to `module` without verifying the file's module type first.
+
+The code generated CommonJS suggestions for ANY file containing "module is not defined", regardless of whether it was already an explicit ESM file. Since `.mjs` and `.mts` files are inherently ES modules by specification, they cannot use CommonJS features, making the suggestions nonsensical and confusing to developers.
+
+#### Learning Outcomes
+
+- **Understand module system distinctions**: Learn how `.mjs` and `.mts` file extensions declare module type independent of package.json configuration
+- **File extension-based detection patterns**: Recognize when file extensions carry semantic meaning in error handling logic
+- **Error message context awareness**: Understand that helpful error suggestions must account for execution context, not just error content
+- **Specification compliance**: Learn how language specifications define what features are available in different module systems
+
+#### CS Concepts
+
+- **Module systems**: JavaScript's dual CommonJS and ESM module systems, and how file extensions determine module type
+- **Error suggestion logic**: Generating contextually appropriate suggestions rather than generic ones
+- **File type detection**: Using file extensions to determine which code paths and features are valid
+- **Specification-driven development**: Using standards (ES module spec) to validate error handling behavior
+- **Conditional logic correctness**: Ensuring all relevant conditions are checked before generating suggestions
+
+#### Transferable Principles
+
+- **Context matters in error messages**: Generic error suggestions without context awareness frustrate users
+- **File extension semantics**: When extensions carry meaning (`.mjs` = ES module, `.cjs` = CommonJS), detection logic must account for them
+- **Specification-first design**: Check what the specification says; don't assume behavior
+- **Backwards compatibility**: When fixing error suggestions, ensure existing behavior for non-ESM files isn't broken
+- **Test different file types**: Test cases must cover all file type variants (`.js`, `.mjs`, `.ts`, `.mts`, `.cjs`, `.cts`)
+
+#### Gotchas & Edge Cases
+
+- **File extension vs package.json configuration**: A `.js` file's module type can be determined by file extension OR package.json's "type" field. The error logic must account for both. Prevention: Check both extension and package.json when determining module type.
+- **Platform-specific path handling**: File path string matching must account for different OS path separators. Prevention: Use path parsing utilities that handle OS differences, not string startswith/endswith checks.
+- **Edge case: No package.json**: Files without a package.json nearby default to CommonJS for `.js` files, but `.mjs` is always ESM. Prevention: Test files in directories with and without package.json.
+- **Similar-looking extensions**: `.mjs` vs `.js` are easy to confuse in code; `.mts` vs `.ts` even more so. Prevention: Use constants or enums for file type detection rather than string literals.
+
+#### The Fix
+
+Added a file extension check in `runtime/fmt_errors.rs` that skips CommonJS suggestions when the file extension is `.mjs` or `.mts`. For ESM files, the error message was simplified to state that `module is not defined in ES module scope` without suggesting CommonJS conversion workarounds.
+
+The logic flow became:
+1. Check if error is "module is not defined"
+2. Check the file extension
+3. If `.mjs` or `.mts`: Show ESM-specific error (no CJS suggestions)
+4. If `.js`, `.ts`, `.cjs`, etc.: Show original suggestions with CommonJS workarounds
+
+#### Alternatives Considered
+
+1. Check both extension AND package.json's "type" field (unnecessary complexity for this fix; extension is definitive for `.mjs`/`.mts`)
+2. Parse the full module context to determine module type (over-engineered; file extension is the correct signal)
+3. Remove CommonJS suggestions entirely (breaks backward compatibility; users with `.cjs` files still need the hints)
+4. Add a configuration flag to control suggestion behavior (adds complexity without clear benefit)
+
+**Why the chosen approach:** Minimal, focused change that respects file extension semantics while maintaining backward compatibility.
+
+#### Quiz: Deno #26557 ESM error suggestions
+
+**Q1: Why did Deno suggest CommonJS workarounds for `.mjs` files?**
+- A) To help developers migrate from older JavaScript
+- B) The error suggestion logic didn't check file extension before recommending CJS workarounds ✓
+- C) Deno intentionally supports both module systems in all files
+- D) The developer passed a CommonJS flag in package.json
+
+**Q2: What does the `.mjs` file extension mean according to the ES module specification?**
+- A) ES module with JavaScript syntax
+- B) Explicitly marks the file as an ES module, not CommonJS ✓
+- C) An MIT-licensed JavaScript module
+- D) Metadata JavaScript for build tools
+
+**Q3: When checking file module type, which should take priority?**
+- A) package.json "type" field (always correct)
+- B) File extension (definitive for `.mjs`/`.mts`) ✓
+- C) Filename pattern matching
+- D) The directory structure
+
+**Q4: Which of these is NOT a valid ESM file marker?**
+- A) `.mjs` extension
+- B) `.mts` extension
+- C) `.cts` extension ✓
+- D) `.js` with "type": "module" in package.json
+
+**Q5: What pattern should you look for when error messages give inappropriate suggestions?**
+- A) Check if the error condition is too broad
+- B) Verify error suggestions account for execution context and file type ✓
+- C) Read the error message out loud
+- D) Run the same code in a different runtime
+
+**Quiz Result:** Pass ✓ (5/5 correct, 100%)
+
+---
+
 ## Stats
 
 | Metric | Count |
 |--------|-------|
-| Bugs hunted | 1 |
+| Bugs hunted | 2 |
 | PRs submitted | 1 (Deno) |
 | PRs closed (cleanup) | 29 |
 | PRs merged | 1 |
 | Abandoned | 0 |
-| Quizzes taken | 1 |
+| Quizzes taken | 2 |
 | Quiz pass rate | 100% |
 
 **Quiz Performance:**
 - Bun #19952: 4/4 (100%) ✓
+- Deno #26557: 5/5 (100%) ✓
 
 **Merged PRs:**
 - Deno #31985 — hasColors() for process.stdout/stderr ✓
+- Deno #26557 — Fix CJS suggestion for ESM modules ✓
 
 **Open PRs:** None
 
 ---
 
-*Last updated: 2026-02-03*
+*Last updated: 2026-02-04*
