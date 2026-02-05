@@ -63,6 +63,13 @@ Update stats and move to the next bug:
 ## Lessons by Project
 
 ### Bun - Issue #19952
+---
+difficulty: medium
+concepts:
+  - stream-processing
+  - debugging
+  - type-systems
+---
 **Date:** 2026-02-01
 **Outcome:** PR closed (part of cleanup)
 **Branch:** https://github.com/ddmoney420/bun/tree/fix-console-trace-stderr-19952
@@ -131,6 +138,13 @@ Changed the writer selection logic in Bun's console implementation to check both
 ---
 
 ### The Volume Disaster - 2026-02-02
+---
+difficulty: hard
+concepts:
+  - error-handling
+  - testing
+  - api-design
+---
 **Date:** 2026-02-02
 **Outcome:** Mass cleanup required
 **Projects affected:** Bun (16 PRs), Deno (2 PRs + 1 issue comment)

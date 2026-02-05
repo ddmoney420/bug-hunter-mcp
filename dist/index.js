@@ -3,6 +3,7 @@
  * Bug Hunter MCP Server
  *
  * An MCP server that helps you find and solve open source issues.
+ * Integrates with Chant for spec-driven development and Moji for styled output.
  *
  * Tools:
  * - hunt_issues: Find good first issues matching your skills
@@ -10,6 +11,17 @@
  * - scaffold_solution: Generate starter implementation for an issue
  * - claim_issue: Comment on an issue to claim it
  * - generate_chant_spec: Generate a Chant driver spec from an issue
+ * - chant_init: Initialize Chant in a repository
+ * - chant_list: List Chant specs in a repository
+ * - chant_show: Show details of a Chant spec
+ * - research_workflow: Run the full Chant research workflow
+ *
+ * Credits:
+ * - Chant (https://github.com/lex00/chant) - Spec-driven development platform
+ * - Moji (https://github.com/ddmoney420/moji) - Terminal styling and kaomojis
+ *
+ * @author ddmoney420
+ * @license MIT
  */
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -19,51 +31,137 @@ import { execSync, exec } from "child_process";
 import { promisify } from "util";
 import * as fs from "fs";
 import * as path from "path";
+import { validateRepoFormat, validatePositiveNumber, validateNonNegativeNumber, validateNumberRange, validateEnum, validateSpecId, validateLanguage, validateKeywords, validateLabels, validateAgent, validateDirectoryPath, validateMessage, validateStringArray, } from "./validators.js";
 const execAsync = promisify(exec);
+// =============================================================================
+// Configuration
+// =============================================================================
 // Initialize GitHub client (uses GITHUB_TOKEN env var if available)
 const octokit = new Octokit({
     auth: process.env.GITHUB_TOKEN,
 });
 // Base directory for cloned repos
 const REPOS_DIR = path.join(process.env.HOME || "~", "Developer", "bug-hunter-repos");
+/**
+ * Chant Integration
+ * https://github.com/lex00/chant - Spec-driven development platform
+ */
+const CHANT_BIN = process.env.CHANT_BIN || path.join(process.env.HOME || "~", "Developer", "chant", "target", "release", "chant");
+/**
+ * Moji Integration
+ * https://github.com/ddmoney420/moji - Terminal styling and kaomojis
+ */
+const MOJI_BIN = process.env.MOJI_BIN || "moji";
+// =============================================================================
+// Moji Helpers - Styled Output (https://github.com/ddmoney420/moji)
+// =============================================================================
+/** Get a kaomoji by name */
+function kaomoji(name) {
+    try {
+        return execSync(`${MOJI_BIN} ${name}`, { encoding: "utf-8" }).trim();
+    }
+    catch {
+        // Fallback kaomojis if moji not available
+        const fallbacks = {
+            happy: "(◕‿◕)",
+            cool: "(⌐■_■)",
+            magic: "(ノ◕ヮ◕)ノ*:・゚✧",
+            shrug: "¯\\_(ツ)_/¯",
+            success: "✓",
+            error: "✗",
+            thinking: "(°ヘ°)?",
+            celebrate: "ヽ(°〇°)ノ",
+        };
+        return fallbacks[name] || "";
+    }
+}
+/** Generate ASCII banner (moji banner) */
+function banner(text, font = "small") {
+    try {
+        return execSync(`${MOJI_BIN} banner "${text}" --font ${font}`, { encoding: "utf-8" });
+    }
+    catch {
+        return `=== ${text} ===`;
+    }
+}
+/** Apply gradient to text */
+function gradient(text, style = "neon") {
+    try {
+        return execSync(`echo "${text}" | ${MOJI_BIN} gradient --style ${style}`, { encoding: "utf-8" });
+    }
+    catch {
+        return text;
+    }
+}
 // Ensure repos directory exists
 if (!fs.existsSync(REPOS_DIR)) {
     fs.mkdirSync(REPOS_DIR, { recursive: true });
 }
+/**
+ * Constants for Difficulty & Concept Tagging System
+ */
+const DIFFICULTY_LEVELS = ["easy", "medium", "hard"];
+const CONCEPT_TAXONOMY = [
+    "race-conditions",
+    "async-await",
+    "memory-management",
+    "type-systems",
+    "error-handling",
+    "testing",
+    "api-design",
+    "caching",
+    "concurrency",
+    "io-operations",
+    "pattern-matching",
+    "stream-processing",
+    "optimization",
+    "debugging",
+];
 /**
  * Tool definitions
  */
 const tools = [
     {
         name: "hunt_issues",
-        description: `Search GitHub for good first issues matching specified criteria.
+        description: `Discover open source issues on GitHub that match your skills and interests.
 
-Searches across popular repositories for issues labeled "good first issue",
-"help wanted", "beginner friendly", etc. Can filter by language and keywords.
+This tool searches for "good first issue" and "help wanted" labeled issues across repositories.
+You can filter by programming language (e.g., Rust, Go, TypeScript), keywords in issue titles,
+and minimum repository stars to find quality projects. Use this to explore opportunities before
+diving deeper with analyze_repo.
 
-Returns a list of issues with repo, title, URL, labels, and comment count.`,
+TYPICAL WORKFLOW:
+1. hunt_issues {language: "rust", min_stars: 100} → Find beginner Rust issues in established repos
+2. analyze_repo {repo: "owner/name"} → Study the codebase you found
+3. scaffold_solution → Generate starter code
+4. claim_issue → Let maintainers know you're working on it
+
+PRACTICAL EXAMPLES:
+- Find Zig issues: hunt_issues {language: "zig", limit: 5}
+- Search for CLI-related work: hunt_issues {keywords: "cli", min_stars: 50}
+- Expand search beyond typical labels: hunt_issues {labels: "good-first-issue,help-wanted"}`,
         inputSchema: {
             type: "object",
             properties: {
                 language: {
                     type: "string",
-                    description: "Programming language to filter by (e.g., 'zig', 'go', 'typescript', 'rust')",
+                    description: "Programming language filter (e.g., 'rust', 'go', 'typescript', 'zig', 'python'). Optional: searches all languages if omitted.",
                 },
                 keywords: {
                     type: "string",
-                    description: "Keywords to search for in issue titles/body (e.g., 'cli', 'api', 'ui')",
+                    description: "Keywords to match in issue title or body (e.g., 'cli', 'api', 'ui', 'parser'). Optional: searches all issues if omitted.",
                 },
                 labels: {
                     type: "string",
-                    description: "Comma-separated labels to filter by (default: 'good first issue')",
+                    description: "Comma-separated GitHub labels to filter by. Default: 'good first issue'. Other common values: 'help-wanted', 'beginner-friendly', 'easy'.",
                 },
                 limit: {
                     type: "number",
-                    description: "Maximum number of issues to return (default: 10, max: 30)",
+                    description: "Maximum issues to return. Valid range: 1-30 (default: 10). Higher values give more options but take longer.",
                 },
                 min_stars: {
                     type: "number",
-                    description: "Minimum repository stars (default: 100)",
+                    description: "Minimum repository stars (0+, default: 100). Lower values = newer projects; higher values = more established projects.",
                 },
             },
             required: [],
@@ -71,26 +169,38 @@ Returns a list of issues with repo, title, URL, labels, and comment count.`,
     },
     {
         name: "analyze_repo",
-        description: `Clone a repository and analyze its structure for contribution.
+        description: `Clone and analyze a repository's structure, build system, and contributing guidelines.
 
-Clones the repo (or uses existing clone), then analyzes:
+This tool performs a deep dive into a GitHub repository to understand how to contribute.
+It clones the repo (or updates existing clone), then provides:
 - Project structure and key directories
-- Build system and dependencies
-- Contributing guidelines
+- Build system and dependencies (detects Cargo.toml, package.json, build.zig, etc.)
+- Contributing guidelines and conventions
 - Open issues summary
-- Code patterns and conventions
+- Code patterns used in the project
 
-Returns a comprehensive analysis to help you understand the codebase.`,
+TYPICAL WORKFLOW:
+1. hunt_issues → Find an interesting issue
+2. analyze_repo {repo: "owner/name"} ← You are here
+3. scaffold_solution → Generate starter implementation
+4. claim_issue → Comment on the issue
+
+PRACTICAL EXAMPLES:
+- Analyze zigtools/zls: analyze_repo {repo: "zigtools/zls"}
+- Analyze and focus on issue #42: analyze_repo {repo: "owner/name", issue_number: 42}
+
+The analysis includes CONTRIBUTING.md content, key file detection, and directory structure.
+Cloned repos are cached in ~/Developer/bug-hunter-repos/ for reuse.`,
         inputSchema: {
             type: "object",
             properties: {
                 repo: {
                     type: "string",
-                    description: "Repository in 'owner/repo' format (e.g., 'zigtools/zls')",
+                    description: "Repository path in 'owner/repo' format (e.g., 'zigtools/zls'). Required: uses GitHub API to fetch repo info.",
                 },
                 issue_number: {
                     type: "number",
-                    description: "Optional: specific issue number to focus analysis on",
+                    description: "Optional: specific issue number to fetch and analyze alongside the repo. If provided, shows issue details, description, and recent comments.",
                 },
             },
             required: ["repo"],
@@ -98,29 +208,43 @@ Returns a comprehensive analysis to help you understand the codebase.`,
     },
     {
         name: "scaffold_solution",
-        description: `Generate a starter implementation scaffold for a GitHub issue.
+        description: `Generate a starter implementation scaffold tailored to the project type.
 
-Analyzes the issue description and codebase to generate:
-- Skeleton code files in the appropriate location
-- Implementation notes and TODOs
-- Test file templates
-- Integration instructions
+This tool creates boilerplate code and project structure for solving a specific issue.
+Based on project type detection (Rust, Zig, Go, TypeScript, Python, etc.), it generates:
+- Skeleton implementation files with proper syntax and conventions
+- NOTES.md with issue details, analysis, and implementation checklist
+- Test file templates matching project conventions
+- TODO list and next steps
 
-The scaffold gives you a head start on solving the issue.`,
+TYPICAL WORKFLOW:
+1. hunt_issues → Find an issue
+2. analyze_repo → Understand the codebase
+3. scaffold_solution {repo: "owner/name", issue_number: 42} ← You are here
+4. Review NOTES.md in the _scaffold_issue_42 directory
+5. Study the actual codebase
+6. Implement your solution using the scaffold as a starting point
+
+PRACTICAL EXAMPLE:
+- Scaffold for Rust project: scaffold_solution {repo: "rust-lang/rust", issue_number: 123}
+  Creates: implementation_title.rs, tests, and NOTES.md with TODOs
+
+The scaffold is created in _scaffold_issue_<number>/ directory (or custom output_dir).
+Use it as a starting point, then move completed files to appropriate locations in the repo.`,
         inputSchema: {
             type: "object",
             properties: {
                 repo: {
                     type: "string",
-                    description: "Repository in 'owner/repo' format",
+                    description: "Repository in 'owner/repo' format (e.g., 'rust-lang/rust'). Required: determines which repo to analyze.",
                 },
                 issue_number: {
                     type: "number",
-                    description: "Issue number to scaffold a solution for",
+                    description: "GitHub issue number to scaffold (1+). Required: fetches issue details and generates relevant starter code.",
                 },
                 output_dir: {
                     type: "string",
-                    description: "Optional: custom output directory for scaffold files",
+                    description: "Optional: custom output directory for scaffold files. Default: _scaffold_issue_<number>/ in the cloned repo directory.",
                 },
             },
             required: ["repo", "issue_number"],
@@ -128,24 +252,43 @@ The scaffold gives you a head start on solving the issue.`,
     },
     {
         name: "claim_issue",
-        description: `Comment on a GitHub issue to claim it for work.
+        description: `Post a comment on a GitHub issue to let maintainers know you're working on it.
 
-Posts a comment indicating you're working on the issue.
-Requires GITHUB_TOKEN environment variable to be set.`,
+This tool helps you communicate your intent to the maintainers before starting work.
+It posts a comment (default or custom) indicating you've analyzed the codebase and are
+beginning implementation. This prevents duplicate effort and signals active work.
+
+IMPORTANT: Requires GITHUB_TOKEN environment variable with 'repo' scope permissions.
+Get your token at: https://github.com/settings/tokens
+
+TYPICAL WORKFLOW:
+1. hunt_issues → Find an issue
+2. analyze_repo → Study the codebase
+3. scaffold_solution → Generate starter code
+4. claim_issue {repo: "owner/name", issue_number: 42} ← You are here
+5. Implement your solution
+6. Submit a pull request
+
+DEFAULT MESSAGE:
+"I'd like to work on this issue! I've analyzed the codebase and am starting on an implementation."
+
+PRACTICAL EXAMPLE:
+- Claim with default message: claim_issue {repo: "zigtools/zls", issue_number: 123}
+- Claim with custom message: claim_issue {repo: "...", issue_number: 123, message: "I'll work on this using approach X..."}`,
         inputSchema: {
             type: "object",
             properties: {
                 repo: {
                     type: "string",
-                    description: "Repository in 'owner/repo' format",
+                    description: "Repository in 'owner/repo' format (e.g., 'zigtools/zls'). Required: determines where to post the comment.",
                 },
                 issue_number: {
                     type: "number",
-                    description: "Issue number to claim",
+                    description: "GitHub issue number to claim (1+). Required: the specific issue comment thread.",
                 },
                 message: {
                     type: "string",
-                    description: "Optional: custom claim message",
+                    description: "Optional: custom claim message (up to 5000 chars). Default message indicates you've analyzed the codebase and are starting implementation.",
                 },
             },
             required: ["repo", "issue_number"],
@@ -153,34 +296,294 @@ Requires GITHUB_TOKEN environment variable to be set.`,
     },
     {
         name: "generate_chant_spec",
-        description: `Generate a Chant driver spec from a GitHub issue.
+        description: `Generate a Chant spec from a GitHub issue for spec-driven development.
 
-Creates a markdown spec file that can be executed by Chant's AI agents.
-The spec includes:
-- Issue context and background
-- Acceptance criteria derived from the issue
-- Target files if identifiable
-- Labels for organization
+This tool bridges GitHub issues and Chant's spec-driven workflow. It creates a markdown spec file
+that Chant agents can execute. The spec auto-extracts:
+- Issue context and acceptance criteria
+- Target files likely to need changes
+- GitHub labels (converted to Chant labels)
+- Issue URL and background
 
-Use with 'chant split' to break into focused sub-specs, then 'chant work' to execute.`,
+CHANT WORKFLOW (Spec-Driven Development):
+1. hunt_issues → Find an issue
+2. analyze_repo → Understand the code
+3. generate_chant_spec {repo: "owner/name", issue_number: 42} ← You are here
+4. Edit the .md spec to refine acceptance criteria
+5. Use 'chant split' to break into focused sub-specs
+6. Run 'chant work <spec-id>' to have AI agents implement
+
+PRACTICAL EXAMPLE:
+- Generate spec: generate_chant_spec {repo: "zig-lang/zig", issue_number: 15000}
+- Output: .chant/specs/zig-lang-zig-implement-feature.md
+- Edit the spec to improve acceptance criteria
+- Split: chant split zig-lang-zig-implement-feature
+- Execute: chant work zig-lang-zig-implement-feature.1
+
+RELATED TOOLS:
+- research_workflow: Use this instead if you want research phase + implementation phase
+- chant_init: Initialize .chant/ in the repo first (if not already done)`,
         inputSchema: {
             type: "object",
             properties: {
                 repo: {
                     type: "string",
-                    description: "Repository in 'owner/repo' format",
+                    description: "Repository in 'owner/repo' format (e.g., 'zig-lang/zig'). Required: fetches issue and determines project type.",
                 },
                 issue_number: {
                     type: "number",
-                    description: "Issue number to create a spec for",
+                    description: "GitHub issue number to convert to spec (1+). Required: defines the task and acceptance criteria.",
                 },
                 spec_id: {
                     type: "string",
-                    description: "Optional: custom spec ID (default: auto-generated from issue)",
+                    description: "Optional: custom spec ID (e.g., 'my-custom-id'). Default: auto-generated from issue title. Must be lowercase alphanumeric + hyphens.",
                 },
                 output_dir: {
                     type: "string",
-                    description: "Optional: output directory for the spec (default: .chant/specs in repo)",
+                    description: "Optional: output directory for spec file. Default: .chant/specs/ in the cloned repo. Directory is created if it doesn't exist.",
+                },
+            },
+            required: ["repo", "issue_number"],
+        },
+    },
+    // =========================================================================
+    // Chant Tools (https://github.com/lex00/chant)
+    // =========================================================================
+    {
+        name: "chant_init",
+        description: `Initialize Chant spec-driven development infrastructure in a repository.
+
+This sets up the .chant/ directory structure with configuration, agent prompts, and
+spec templates. Run this once per repository to enable the Chant workflow. It creates:
+- .chant/config.yaml - Configuration for agents and execution
+- .chant/prompts/ - AI agent system prompts
+- .chant/specs/ - Directory for spec files
+- .chant/archive/ - Archive for completed specs
+
+TYPICAL WORKFLOW:
+1. hunt_issues → Find an issue
+2. analyze_repo → Clone the repo (automatically clones if not present)
+3. chant_init {repo: "owner/name"} ← You are here
+4. generate_chant_spec or research_workflow → Create specs
+5. chant_list → See all specs
+6. chant work → Execute specs with AI agents
+
+PRACTICAL EXAMPLES:
+- Initialize repo: chant_init {repo: "zigtools/zls"}
+- Reinitialize (reset config): chant_init {repo: "zigtools/zls", force: true}
+- Custom agent: chant_init {repo: "zigtools/zls", agent: "custom"}
+
+NOTE: analyze_repo automatically clones repos. chant_init just sets up the workflow.
+CHANT: Specification-driven development - https://github.com/lex00/chant`,
+        inputSchema: {
+            type: "object",
+            properties: {
+                repo: {
+                    type: "string",
+                    description: "Repository in 'owner/repo' format (e.g., 'zigtools/zls'). Required: determines where to set up .chant/.",
+                },
+                agent: {
+                    type: "string",
+                    description: "Agent type to configure (default: 'claude'). Common values: 'claude', 'local', 'custom'. Determines which AI system handles spec execution.",
+                },
+                force: {
+                    type: "boolean",
+                    description: "Optional: force reinitialization even if .chant/ already exists (default: false). Use to reset config to defaults.",
+                },
+            },
+            required: ["repo"],
+        },
+    },
+    {
+        name: "chant_list",
+        description: `List all Chant specs in a repository with filtering options.
+
+Displays spec IDs, titles, descriptions, and execution status. Use filters to find
+specific specs by status (pending, in_progress, completed), type (code, task, driver, research),
+or custom labels. This gives you an overview of all work tracked in the repository.
+
+TYPICAL WORKFLOW:
+1. chant_init → Set up Chant
+2. generate_chant_spec or research_workflow → Create specs
+3. chant_list {repo: "owner/name"} ← You are here
+4. chant_show → View details of a specific spec
+5. chant work → Execute a spec
+
+PRACTICAL EXAMPLES:
+- List all specs: chant_list {repo: "zigtools/zls"}
+- Show only pending work: chant_list {repo: "zigtools/zls", status: "pending"}
+- Filter by type: chant_list {repo: "zigtools/zls", type: "code"}
+- Filter by label: chant_list {repo: "zigtools/zls", label: "bug-fix"}
+- Combine filters: chant_list {repo: "zigtools/zls", status: "pending", type: "code"}
+
+STATUS VALUES: pending (not started), in_progress (being worked), completed (done), ready (dependencies met), blocked (waiting for other specs)
+TYPE VALUES: code (implementation), task (documentation/setup), driver (issue template), research (investigation)
+
+CHANT: https://github.com/lex00/chant`,
+        inputSchema: {
+            type: "object",
+            properties: {
+                repo: {
+                    type: "string",
+                    description: "Repository in 'owner/repo' format (e.g., 'zigtools/zls'). Required: determines which .chant/specs/ to read.",
+                },
+                status: {
+                    type: "string",
+                    description: "Optional: filter by status. Valid values: pending, in_progress, completed, ready, blocked. Shows only specs matching this status.",
+                },
+                type: {
+                    type: "string",
+                    description: "Optional: filter by spec type. Valid values: code (implementation), task (setup/docs), driver (from issue), research (investigation). Shows only matching types.",
+                },
+                label: {
+                    type: "string",
+                    description: "Optional: filter by custom label. Shows only specs tagged with this label. Labels are defined in spec YAML frontmatter.",
+                },
+            },
+            required: ["repo"],
+        },
+    },
+    {
+        name: "chant_show",
+        description: `Display complete details of a specific Chant spec.
+
+Shows the full spec content including YAML frontmatter, problem statement, acceptance criteria,
+target files, and status. Use this to review a spec before executing it, or to understand
+what a spec accomplished after completion.
+
+TYPICAL WORKFLOW:
+1. chant_list → Find spec IDs
+2. chant_show {repo: "owner/name", spec_id: "my-feature-123"} ← You are here
+3. Review acceptance criteria and status
+4. chant work → Execute the spec if pending
+
+PRACTICAL EXAMPLES:
+- View a spec: chant_show {repo: "zigtools/zls", spec_id: "add-hover-support"}
+- Check a completed spec: chant_show {repo: "zigtools/zls", spec_id: "fix-parser-bug"}
+- Understand dependencies: chant_show {repo: "zigtools/zls", spec_id: "feature-x"} (shows depends_on)
+
+OUTPUT INCLUDES:
+- Type: code, task, driver, research, group
+- Status: pending, in_progress, completed, ready, blocked
+- Acceptance Criteria: checklist of items to complete
+- Target Files: which files this spec modifies
+- Labels: custom labels for organization
+- Full problem description and solution approach
+
+CHANT: https://github.com/lex00/chant`,
+        inputSchema: {
+            type: "object",
+            properties: {
+                repo: {
+                    type: "string",
+                    description: "Repository in 'owner/repo' format (e.g., 'zigtools/zls'). Required: determines which .chant/specs/ to search.",
+                },
+                spec_id: {
+                    type: "string",
+                    description: "Spec identifier to display (e.g., 'add-hover-support'). Required: the specific spec to view. Use chant_list to find spec IDs.",
+                },
+            },
+            required: ["repo", "spec_id"],
+        },
+    },
+    {
+        name: "filter_lessons",
+        description: `Filter and search LESSONS.md entries by difficulty level and CS concepts.
+
+This tool helps you find learning materials tailored to your skill level and interests.
+It parses LESSONS.md to find bug entries tagged with difficulty (easy/medium/hard) and
+CS concepts (race-conditions, async-await, memory-management, type-systems, etc.).
+
+TYPICAL WORKFLOW:
+1. Find all easy lessons: filter_lessons {difficulty: "easy"}
+2. Find lessons on async-await: filter_lessons {concepts: ["async-await"]}
+3. Find medium lessons on both concurrency and caching: filter_lessons {difficulty: "medium", concepts: ["concurrency", "caching"]}
+4. Get concept statistics: filter_lessons {show_stats: true}
+
+PRACTICAL EXAMPLES:
+- Find beginner-friendly lessons: filter_lessons {difficulty: "easy"}
+- Learn about type systems: filter_lessons {concepts: ["type-systems"]}
+- Hard lessons on memory management: filter_lessons {difficulty: "hard", concepts: ["memory-management"]}
+- See all concepts you've mastered: filter_lessons {show_stats: true}
+
+CONCEPT TAXONOMY:
+${CONCEPT_TAXONOMY.map(c => `- ${c}`).join("\n")}`,
+        inputSchema: {
+            type: "object",
+            properties: {
+                difficulty: {
+                    type: "string",
+                    description: "Filter by difficulty level: 'easy', 'medium', or 'hard'. Optional: returns all levels if omitted.",
+                    enum: ["easy", "medium", "hard"],
+                },
+                concepts: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: `Filter by CS concepts. Returns entries that have ANY of the specified concepts. Valid concepts: ${CONCEPT_TAXONOMY.join(", ")}`,
+                },
+                show_stats: {
+                    type: "boolean",
+                    description: "Optional: show concept statistics and mastery tracking (default: false). Displays concepts learned, frequency across bugs, and cross-bug patterns.",
+                },
+                limit: {
+                    type: "number",
+                    description: "Maximum entries to return (1-50, default: 10). Higher values show more lessons.",
+                },
+            },
+            required: [],
+        },
+    },
+    {
+        name: "research_workflow",
+        description: `Execute Chant's two-phase workflow: research then implementation.
+
+This is the enterprise-grade approach for complex issues. It creates two interdependent specs:
+1. RESEARCH PHASE: Investigate codebase, document findings, answer research questions
+   - Runs first to understand the problem space
+   - Creates RESEARCH_<issue_number>.md with findings
+   - Identifies files, patterns, and edge cases
+
+2. IMPLEMENTATION PHASE: Execute implementation based on research findings
+   - Automatically depends on research phase completing first
+   - Uses research findings to guide implementation
+   - Follows documented approach and conventions
+
+WORKFLOW:
+1. hunt_issues → Find an issue
+2. analyze_repo → Quick overview
+3. research_workflow {repo: "owner/name", issue_number: 123} ← You are here
+4. chant work <research-spec-id> → Answer research questions
+5. Review RESEARCH_123.md findings
+6. chant work <implementation-spec-id> → Execute implementation
+7. Submit PR!
+
+PRACTICAL EXAMPLE:
+research_workflow {repo: "zigtools/zls", issue_number: 500, research_questions: ["What modules parse this format?", "What edge cases exist?"]}
+
+This creates:
+- <date>-research-500.md spec (research phase)
+- <date>-impl-500.md spec (implementation phase, depends on research)
+
+COMPARE TO:
+- generate_chant_spec: Single spec, direct implementation
+- research_workflow: Two specs, research-informed implementation (recommended for complex issues)
+
+CHANT: https://github.com/lex00/chant`,
+        inputSchema: {
+            type: "object",
+            properties: {
+                repo: {
+                    type: "string",
+                    description: "Repository in 'owner/repo' format (e.g., 'zigtools/zls'). Required: fetches issue and creates specs.",
+                },
+                issue_number: {
+                    type: "number",
+                    description: "GitHub issue number to research and implement (1+). Required: defines the problem for research phase.",
+                },
+                research_questions: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Optional: custom research questions to guide investigation. Default: generic questions about files, patterns, edge cases, and tests. Examples: ['What modules handle this?', 'What edge cases exist?']",
                 },
             },
             required: ["repo", "issue_number"],
@@ -191,6 +594,27 @@ Use with 'chant split' to break into focused sub-specs, then 'chant work' to exe
  * Hunt for good first issues
  */
 async function huntIssues(params) {
+    // Validate inputs
+    const languageValidation = validateLanguage(params.language, false);
+    if (!languageValidation.isValid) {
+        return `Error: ${languageValidation.error}`;
+    }
+    const keywordsValidation = validateKeywords(params.keywords, false);
+    if (!keywordsValidation.isValid) {
+        return `Error: ${keywordsValidation.error}`;
+    }
+    const labelsValidation = validateLabels(params.labels, false);
+    if (!labelsValidation.isValid) {
+        return `Error: ${labelsValidation.error}`;
+    }
+    const limitValidation = validateNumberRange(params.limit, "Limit", 1, 30, false);
+    if (!limitValidation.isValid) {
+        return `Error: ${limitValidation.error}`;
+    }
+    const minStarsValidation = validateNonNegativeNumber(params.min_stars, "Min stars", false);
+    if (!minStarsValidation.isValid) {
+        return `Error: ${minStarsValidation.error}`;
+    }
     const { language, keywords, labels = "good first issue", limit = 10, min_stars = 100, } = params;
     // Build search query
     let query = `is:issue is:open label:"${labels}"`;
@@ -245,6 +669,15 @@ async function huntIssues(params) {
  * Analyze a repository
  */
 async function analyzeRepo(params) {
+    // Validate inputs
+    const repoValidation = validateRepoFormat(params.repo);
+    if (!repoValidation.isValid) {
+        return `Error: ${repoValidation.error}`;
+    }
+    const issueNumberValidation = validatePositiveNumber(params.issue_number, "Issue number", false);
+    if (!issueNumberValidation.isValid) {
+        return `Error: ${issueNumberValidation.error}`;
+    }
     const { repo, issue_number } = params;
     const [owner, repoName] = repo.split("/");
     const repoDir = path.join(REPOS_DIR, owner, repoName);
@@ -356,6 +789,19 @@ async function analyzeRepo(params) {
  * Scaffold a solution for an issue
  */
 async function scaffoldSolution(params) {
+    // Validate inputs
+    const repoValidation = validateRepoFormat(params.repo);
+    if (!repoValidation.isValid) {
+        return `Error: ${repoValidation.error}`;
+    }
+    const issueNumberValidation = validatePositiveNumber(params.issue_number, "Issue number", true);
+    if (!issueNumberValidation.isValid) {
+        return `Error: ${issueNumberValidation.error}`;
+    }
+    const outputDirValidation = validateDirectoryPath(params.output_dir, "Output directory", false);
+    if (!outputDirValidation.isValid) {
+        return `Error: ${outputDirValidation.error}`;
+    }
     const { repo, issue_number, output_dir } = params;
     const [owner, repoName] = repo.split("/");
     const repoDir = path.join(REPOS_DIR, owner, repoName);
@@ -438,6 +884,19 @@ ${labels.join(", ")}
  * Claim an issue by commenting
  */
 async function claimIssue(params) {
+    // Validate inputs
+    const repoValidation = validateRepoFormat(params.repo);
+    if (!repoValidation.isValid) {
+        return `Error: ${repoValidation.error}`;
+    }
+    const issueNumberValidation = validatePositiveNumber(params.issue_number, "Issue number", true);
+    if (!issueNumberValidation.isValid) {
+        return `Error: ${issueNumberValidation.error}`;
+    }
+    const messageValidation = validateMessage(params.message, "Message", 5000);
+    if (!messageValidation.isValid) {
+        return `Error: ${messageValidation.error}`;
+    }
     const { repo, issue_number, message } = params;
     const [owner, repoName] = repo.split("/");
     const defaultMessage = `I'd like to work on this issue! I've analyzed the codebase and am starting on an implementation.`;
@@ -459,6 +918,23 @@ async function claimIssue(params) {
  * Generate a Chant driver spec from a GitHub issue
  */
 async function generateChantSpec(params) {
+    // Validate inputs
+    const repoValidation = validateRepoFormat(params.repo);
+    if (!repoValidation.isValid) {
+        return `Error: ${repoValidation.error}`;
+    }
+    const issueNumberValidation = validatePositiveNumber(params.issue_number, "Issue number", true);
+    if (!issueNumberValidation.isValid) {
+        return `Error: ${issueNumberValidation.error}`;
+    }
+    const specIdValidation = validateSpecId(params.spec_id);
+    if (params.spec_id && !specIdValidation.isValid) {
+        return `Error: ${specIdValidation.error}`;
+    }
+    const outputDirValidation = validateDirectoryPath(params.output_dir, "Output directory", false);
+    if (!outputDirValidation.isValid) {
+        return `Error: ${outputDirValidation.error}`;
+    }
     const { repo, issue_number, spec_id, output_dir } = params;
     const [owner, repoName] = repo.split("/");
     const repoDir = path.join(REPOS_DIR, owner, repoName);
@@ -598,6 +1074,532 @@ function extractTargetFiles(issueBody, projectType) {
         files.push(...new Set(matches));
     }
     return files.slice(0, 10); // Limit to 10 files
+}
+function parseLessonsFile(filePath) {
+    const content = fs.readFileSync(filePath, "utf-8");
+    const lines = content.split("\n");
+    const entries = [];
+    // Regex to match h3 headers (### Title) which denote bug entries
+    const h3Regex = /^### (.+)$/;
+    for (let i = 0; i < lines.length; i++) {
+        const match = lines[i].match(h3Regex);
+        if (match) {
+            const title = match[1];
+            const lineStart = i;
+            // Look for YAML frontmatter in the next few lines
+            let difficulty = undefined;
+            let concepts = [];
+            let frontmatterEnd = i + 1;
+            // Check if the next line starts with ---
+            if (lines[i + 1] === "---") {
+                frontmatterEnd = i + 2;
+                // Parse YAML-like frontmatter
+                while (frontmatterEnd < lines.length && lines[frontmatterEnd] !== "---") {
+                    const line = lines[frontmatterEnd];
+                    if (line.startsWith("difficulty:")) {
+                        difficulty = line.replace("difficulty:", "").trim().toLowerCase();
+                    }
+                    else if (line.startsWith("concepts:")) {
+                        // Start parsing the concepts array
+                        const conceptsStart = frontmatterEnd;
+                        frontmatterEnd++;
+                        while (frontmatterEnd < lines.length &&
+                            lines[frontmatterEnd].startsWith("  - ")) {
+                            const concept = lines[frontmatterEnd].replace("  - ", "").trim();
+                            if (concept)
+                                concepts.push(concept);
+                            frontmatterEnd++;
+                        }
+                        frontmatterEnd--; // Back up one since the loop will increment
+                    }
+                    frontmatterEnd++;
+                }
+                if (frontmatterEnd < lines.length && lines[frontmatterEnd] === "---") {
+                    frontmatterEnd++;
+                }
+            }
+            // Find the end of this entry (next h3 or h2, or end of file)
+            let lineEnd = lines.length;
+            for (let j = i + 1; j < lines.length; j++) {
+                if (lines[j].match(/^## /) || lines[j].match(/^### /)) {
+                    lineEnd = j;
+                    break;
+                }
+            }
+            const entryContent = lines.slice(frontmatterEnd, lineEnd).join("\n");
+            const id = title
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "-")
+                .replace(/^-|-$/g, "");
+            entries.push({
+                id,
+                title,
+                difficulty,
+                concepts,
+                content: entryContent.trim(),
+                lineStart,
+                lineEnd,
+            });
+            i = lineEnd - 1;
+        }
+    }
+    return entries;
+}
+/**
+ * Filter lessons by difficulty and concepts
+ */
+async function filterLessons(params) {
+    const limitValidation = validateNumberRange(params.limit, "Limit", 1, 50, false);
+    if (!limitValidation.isValid) {
+        return `Error: ${limitValidation.error}`;
+    }
+    if (params.difficulty) {
+        const diffValidation = validateEnum(params.difficulty, "Difficulty", DIFFICULTY_LEVELS, false);
+        if (!diffValidation.isValid) {
+            return `Error: ${diffValidation.error}`;
+        }
+    }
+    if (params.concepts) {
+        const conceptsValidation = validateStringArray(params.concepts, "Concepts", 10, 50);
+        if (!conceptsValidation.isValid) {
+            return `Error: ${conceptsValidation.error}`;
+        }
+        // Validate each concept
+        for (const concept of params.concepts) {
+            if (!CONCEPT_TAXONOMY.includes(concept.toLowerCase())) {
+                return `Error: Unknown concept '${concept}'. Valid concepts: ${CONCEPT_TAXONOMY.join(", ")}`;
+            }
+        }
+    }
+    const { difficulty, concepts = [], show_stats = false, limit = 10, } = params;
+    const lessonsPath = path.join(process.cwd(), "LESSONS.md");
+    try {
+        if (!fs.existsSync(lessonsPath)) {
+            return `Error: LESSONS.md not found at ${lessonsPath}`;
+        }
+        const entries = parseLessonsFile(lessonsPath);
+        // Filter entries
+        let filtered = entries.filter((entry) => {
+            // Filter by difficulty
+            if (difficulty && entry.difficulty !== difficulty) {
+                return false;
+            }
+            // Filter by concepts (match if entry has ANY of the specified concepts)
+            if (concepts.length > 0) {
+                const conceptsLower = concepts.map((c) => c.toLowerCase());
+                const hasMatchingConcept = entry.concepts.some((c) => conceptsLower.includes(c.toLowerCase()));
+                if (!hasMatchingConcept) {
+                    return false;
+                }
+            }
+            return true;
+        });
+        // Limit results
+        filtered = filtered.slice(0, limit);
+        let result = `# Filtered Lessons\n\n`;
+        if (params.difficulty) {
+            result += `**Difficulty:** ${difficulty}\n`;
+        }
+        if (concepts.length > 0) {
+            result += `**Concepts:** ${concepts.join(", ")}\n`;
+        }
+        if (params.difficulty || concepts.length > 0) {
+            result += `\n`;
+        }
+        if (filtered.length === 0) {
+            result += `No lessons found matching your criteria.\n\n`;
+            result += `Available concepts: ${CONCEPT_TAXONOMY.join(", ")}\n`;
+            result += `Available difficulties: ${DIFFICULTY_LEVELS.join(", ")}\n`;
+            return result;
+        }
+        result += `Found ${filtered.length} matching lesson(s):\n\n`;
+        for (const entry of filtered) {
+            result += `## ${entry.title}\n`;
+            if (entry.difficulty) {
+                result += `- **Difficulty:** ${entry.difficulty}\n`;
+            }
+            if (entry.concepts.length > 0) {
+                result += `- **Concepts:** ${entry.concepts.join(", ")}\n`;
+            }
+            result += `\n${entry.content.slice(0, 500)}\n`;
+            if (entry.content.length > 500) {
+                result += `...\n`;
+            }
+            result += `\n---\n\n`;
+        }
+        // Show statistics if requested
+        if (show_stats) {
+            result += `## Statistics\n\n`;
+            // Count concepts across all entries
+            const conceptFrequency = {};
+            const allEntries = parseLessonsFile(lessonsPath);
+            for (const entry of allEntries) {
+                for (const concept of entry.concepts) {
+                    conceptFrequency[concept] = (conceptFrequency[concept] || 0) + 1;
+                }
+            }
+            // Count by difficulty
+            const byDifficulty = {};
+            for (const entry of allEntries) {
+                if (entry.difficulty) {
+                    byDifficulty[entry.difficulty] =
+                        (byDifficulty[entry.difficulty] || 0) + 1;
+                }
+            }
+            result += `### Concepts Mastered (Frequency)\n`;
+            const sortedConcepts = Object.entries(conceptFrequency).sort((a, b) => b[1] - a[1]);
+            for (const [concept, count] of sortedConcepts) {
+                result += `- **${concept}**: ${count} bug(s)\n`;
+            }
+            result += `\n### Lessons by Difficulty\n`;
+            for (const diff of DIFFICULTY_LEVELS) {
+                const count = byDifficulty[diff] || 0;
+                result += `- **${diff}**: ${count} lesson(s)\n`;
+            }
+            result += `\n### Cross-Bug Pattern Detection\n`;
+            const patterns = new Map();
+            for (const entry of allEntries) {
+                if (entry.concepts.length > 1) {
+                    const key = entry.concepts.sort().join(" + ");
+                    if (!patterns.has(key)) {
+                        patterns.set(key, []);
+                    }
+                    patterns.get(key).push(entry.title);
+                }
+            }
+            const sortedPatterns = Array.from(patterns.entries()).sort((a, b) => b[1].length - a[1].length);
+            if (sortedPatterns.length > 0) {
+                for (const [pattern, titles] of sortedPatterns.slice(0, 5)) {
+                    if (titles.length > 1) {
+                        result += `- **${pattern}**: Found in ${titles.length} lessons\n`;
+                    }
+                }
+            }
+            else {
+                result += `No patterns found (concepts typically appear in single lessons)\n`;
+            }
+        }
+        return result;
+    }
+    catch (error) {
+        return `Error filtering lessons: ${error.message}`;
+    }
+}
+// =============================================================================
+// Chant Tool Implementations (https://github.com/lex00/chant)
+// =============================================================================
+/**
+ * Initialize Chant in a repository
+ */
+async function chantInit(params) {
+    // Validate inputs
+    const repoValidation = validateRepoFormat(params.repo);
+    if (!repoValidation.isValid) {
+        return `Error: ${repoValidation.error}`;
+    }
+    const agentValidation = validateAgent(params.agent);
+    if (!agentValidation.isValid) {
+        return `Error: ${agentValidation.error}`;
+    }
+    const { repo, agent = "claude", force = false } = params;
+    const [owner, repoName] = repo.split("/");
+    const repoDir = path.join(REPOS_DIR, owner, repoName);
+    let result = `${banner("CHANT INIT")}\n`;
+    result += `${kaomoji("magic")} Initializing Chant in ${repo}\n\n`;
+    try {
+        // Ensure repo is cloned
+        if (!fs.existsSync(repoDir)) {
+            result += `${kaomoji("thinking")} Repository not found locally. Cloning first...\n`;
+            fs.mkdirSync(path.dirname(repoDir), { recursive: true });
+            execSync(`git clone --depth 1 https://github.com/${repo}.git ${repoDir}`, {
+                stdio: "pipe",
+            });
+            result += `${kaomoji("success")} Cloned to: ${repoDir}\n\n`;
+        }
+        // Run chant init
+        const forceFlag = force ? "--force" : "";
+        const cmd = `cd "${repoDir}" && ${CHANT_BIN} init --agent ${agent} ${forceFlag}`;
+        try {
+            const output = execSync(cmd, { encoding: "utf-8", stdio: "pipe" });
+            result += `${kaomoji("success")} Chant initialized!\n\n`;
+            result += output;
+        }
+        catch (error) {
+            if (error.stdout) {
+                result += error.stdout;
+            }
+            if (error.stderr && !error.stderr.includes("already initialized")) {
+                result += `\n${kaomoji("error")} ${error.stderr}`;
+            }
+        }
+        result += `\n## Next Steps ${kaomoji("cool")}\n`;
+        result += `1. \`cd ${repoDir}\`\n`;
+        result += `2. \`chant add "description"\` - Create a spec\n`;
+        result += `3. \`chant work <spec-id>\` - Execute a spec\n`;
+        return result;
+    }
+    catch (error) {
+        return `${kaomoji("error")} Error initializing chant: ${error.message}`;
+    }
+}
+/**
+ * List Chant specs in a repository
+ */
+async function chantList(params) {
+    // Validate inputs
+    const repoValidation = validateRepoFormat(params.repo);
+    if (!repoValidation.isValid) {
+        return `Error: ${repoValidation.error}`;
+    }
+    const statusValidation = validateEnum(params.status, "Status", ["pending", "in_progress", "completed", "ready", "blocked"], false);
+    if (!statusValidation.isValid) {
+        return `Error: ${statusValidation.error}`;
+    }
+    const typeValidation = validateEnum(params.type, "Type", ["code", "task", "driver", "research", "group"], false);
+    if (!typeValidation.isValid) {
+        return `Error: ${typeValidation.error}`;
+    }
+    const labelValidation = validateLabels(params.label, false);
+    if (!labelValidation.isValid) {
+        return `Error: ${labelValidation.error}`;
+    }
+    const { repo, status, type, label } = params;
+    const [owner, repoName] = repo.split("/");
+    const repoDir = path.join(REPOS_DIR, owner, repoName);
+    let result = `${banner("CHANT SPECS")}\n`;
+    result += `${kaomoji("happy")} Specs in ${repo}\n\n`;
+    try {
+        if (!fs.existsSync(repoDir)) {
+            return `${kaomoji("error")} Repository not cloned. Run analyze_repo or chant_init first.`;
+        }
+        // Build command with filters
+        let cmd = `cd "${repoDir}" && ${CHANT_BIN} list`;
+        if (status)
+            cmd += ` --status ${status}`;
+        if (type)
+            cmd += ` --type ${type}`;
+        if (label)
+            cmd += ` --label ${label}`;
+        try {
+            const output = execSync(cmd, { encoding: "utf-8", stdio: "pipe" });
+            if (output.includes("No specs")) {
+                result += `${kaomoji("shrug")} No specs found.\n\n`;
+                result += `Create one with: \`chant add "description"\`\n`;
+            }
+            else {
+                result += output;
+            }
+        }
+        catch (error) {
+            if (error.stdout) {
+                result += error.stdout;
+            }
+            else {
+                result += `${kaomoji("error")} ${error.message}`;
+            }
+        }
+        return result;
+    }
+    catch (error) {
+        return `${kaomoji("error")} Error listing specs: ${error.message}`;
+    }
+}
+/**
+ * Show details of a Chant spec
+ */
+async function chantShow(params) {
+    // Validate inputs
+    const repoValidation = validateRepoFormat(params.repo);
+    if (!repoValidation.isValid) {
+        return `Error: ${repoValidation.error}`;
+    }
+    const specIdValidation = validateSpecId(params.spec_id);
+    if (!specIdValidation.isValid) {
+        return `Error: ${specIdValidation.error}`;
+    }
+    const { repo, spec_id } = params;
+    const [owner, repoName] = repo.split("/");
+    const repoDir = path.join(REPOS_DIR, owner, repoName);
+    let result = `${banner("SPEC")}\n`;
+    try {
+        if (!fs.existsSync(repoDir)) {
+            return `${kaomoji("error")} Repository not cloned. Run analyze_repo or chant_init first.`;
+        }
+        const cmd = `cd "${repoDir}" && ${CHANT_BIN} show ${spec_id}`;
+        try {
+            const output = execSync(cmd, { encoding: "utf-8", stdio: "pipe" });
+            result += output;
+        }
+        catch (error) {
+            if (error.stdout) {
+                result += error.stdout;
+            }
+            else {
+                result += `${kaomoji("error")} Spec not found: ${spec_id}`;
+            }
+        }
+        return result;
+    }
+    catch (error) {
+        return `${kaomoji("error")} Error showing spec: ${error.message}`;
+    }
+}
+/**
+ * Run the full Chant research workflow for an issue
+ * https://github.com/lex00/chant/tree/main/docs/guides/enterprise/research-workflow
+ */
+async function researchWorkflow(params) {
+    // Validate inputs
+    const repoValidation = validateRepoFormat(params.repo);
+    if (!repoValidation.isValid) {
+        return `Error: ${repoValidation.error}`;
+    }
+    const issueNumberValidation = validatePositiveNumber(params.issue_number, "Issue number", true);
+    if (!issueNumberValidation.isValid) {
+        return `Error: ${issueNumberValidation.error}`;
+    }
+    const questionsValidation = validateStringArray(params.research_questions, "Research questions", 20, 500);
+    if (!questionsValidation.isValid) {
+        return `Error: ${questionsValidation.error}`;
+    }
+    const { repo, issue_number, research_questions = [] } = params;
+    const [owner, repoName] = repo.split("/");
+    const repoDir = path.join(REPOS_DIR, owner, repoName);
+    let result = `${banner("RESEARCH WORKFLOW")}\n`;
+    result += `${kaomoji("magic")} Starting research workflow for ${repo}#${issue_number}\n\n`;
+    try {
+        // Ensure repo is cloned and chant initialized
+        if (!fs.existsSync(repoDir)) {
+            result += `${kaomoji("thinking")} Cloning repository...\n`;
+            fs.mkdirSync(path.dirname(repoDir), { recursive: true });
+            execSync(`git clone --depth 1 https://github.com/${repo}.git ${repoDir}`, {
+                stdio: "pipe",
+            });
+        }
+        // Initialize chant if needed
+        const chantDir = path.join(repoDir, ".chant");
+        if (!fs.existsSync(chantDir)) {
+            result += `${kaomoji("thinking")} Initializing Chant...\n`;
+            execSync(`cd "${repoDir}" && ${CHANT_BIN} init --agent claude`, { stdio: "pipe" });
+        }
+        // Fetch issue details
+        const issue = await octokit.issues.get({
+            owner,
+            repo: repoName,
+            issue_number,
+        });
+        const issueTitle = issue.data.title;
+        const issueBody = issue.data.body || "";
+        const issueUrl = issue.data.html_url;
+        // Generate research spec ID
+        const dateStr = new Date().toISOString().split("T")[0];
+        const researchId = `${dateStr}-research-${issue_number}`;
+        const implId = `${dateStr}-impl-${issue_number}`;
+        // Build research questions
+        const defaultQuestions = [
+            "What files are most relevant to this issue?",
+            "What patterns/conventions does the codebase use?",
+            "What edge cases need to be handled?",
+            "What tests should be added?",
+        ];
+        const questions = research_questions.length > 0 ? research_questions : defaultQuestions;
+        // Create research spec
+        const researchSpec = `---
+type: research
+status: pending
+labels:
+- issue-${issue_number}
+- research
+informed_by:
+- src/
+target_files:
+- RESEARCH_${issue_number}.md
+---
+# Research: ${issueTitle}
+
+GitHub Issue: [${repo}#${issue_number}](${issueUrl})
+
+## Mission ${kaomoji("magic")}
+
+Investigate the codebase to understand how to implement this issue.
+
+## Research Questions
+
+${questions.map(q => `- [ ] ${q}`).join("\n")}
+
+## Issue Context
+
+${issueBody.slice(0, 1500)}${issueBody.length > 1500 ? "\n\n...(truncated)" : ""}
+
+## Methodology
+
+1. Explore relevant directories and files
+2. Analyze existing patterns and conventions
+3. Document findings in RESEARCH_${issue_number}.md
+4. Propose implementation approach
+
+## Acceptance Criteria
+
+- [ ] All research questions answered
+- [ ] Relevant files identified and documented
+- [ ] Implementation approach proposed
+- [ ] Research findings written to RESEARCH_${issue_number}.md
+`;
+        // Create implementation spec (depends on research)
+        const implSpec = `---
+type: code
+status: pending
+depends_on:
+- ${researchId}
+labels:
+- issue-${issue_number}
+- implementation
+---
+# Implement: ${issueTitle}
+
+GitHub Issue: [${repo}#${issue_number}](${issueUrl})
+
+## Background
+
+This spec implements the solution based on research findings in \`${researchId}\`.
+
+## Implementation Plan
+
+(To be filled after research phase completes)
+
+## Acceptance Criteria
+
+- [ ] Implementation complete per research findings
+- [ ] All existing tests pass
+- [ ] New tests added
+- [ ] Code follows project conventions
+`;
+        // Write specs
+        const specsDir = path.join(repoDir, ".chant", "specs");
+        fs.mkdirSync(specsDir, { recursive: true });
+        const researchPath = path.join(specsDir, `${researchId}.md`);
+        const implPath = path.join(specsDir, `${implId}.md`);
+        fs.writeFileSync(researchPath, researchSpec);
+        fs.writeFileSync(implPath, implSpec);
+        result += `${kaomoji("success")} Created research workflow specs!\n\n`;
+        result += `## Phase 1: Research ${kaomoji("thinking")}\n`;
+        result += `**Spec:** ${researchId}\n`;
+        result += `**File:** ${researchPath}\n\n`;
+        result += `## Phase 2: Implementation ${kaomoji("cool")}\n`;
+        result += `**Spec:** ${implId}\n`;
+        result += `**File:** ${implPath}\n`;
+        result += `**Depends on:** ${researchId}\n\n`;
+        result += `## Next Steps ${kaomoji("celebrate")}\n`;
+        result += `1. \`cd ${repoDir}\`\n`;
+        result += `2. \`chant work ${researchId}\` - Run research phase\n`;
+        result += `3. Review findings in RESEARCH_${issue_number}.md\n`;
+        result += `4. \`chant work ${implId}\` - Run implementation phase\n`;
+        result += `5. Submit PR!\n`;
+        return result;
+    }
+    catch (error) {
+        return `${kaomoji("error")} Error in research workflow: ${error.message}`;
+    }
 }
 /**
  * Detect project type from repo contents
@@ -782,6 +1784,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 break;
             case "generate_chant_spec":
                 result = await generateChantSpec(args);
+                break;
+            // Chant Tools (https://github.com/lex00/chant)
+            case "chant_init":
+                result = await chantInit(args);
+                break;
+            case "chant_list":
+                result = await chantList(args);
+                break;
+            case "chant_show":
+                result = await chantShow(args);
+                break;
+            case "research_workflow":
+                result = await researchWorkflow(args);
+                break;
+            case "filter_lessons":
+                result = await filterLessons(args);
                 break;
             default:
                 result = `Unknown tool: ${name}`;

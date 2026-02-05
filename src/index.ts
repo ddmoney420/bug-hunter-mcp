@@ -128,6 +128,27 @@ if (!fs.existsSync(REPOS_DIR)) {
 }
 
 /**
+ * Constants for Difficulty & Concept Tagging System
+ */
+const DIFFICULTY_LEVELS = ["easy", "medium", "hard"] as const;
+const CONCEPT_TAXONOMY = [
+  "race-conditions",
+  "async-await",
+  "memory-management",
+  "type-systems",
+  "error-handling",
+  "testing",
+  "api-design",
+  "caching",
+  "concurrency",
+  "io-operations",
+  "pattern-matching",
+  "stream-processing",
+  "optimization",
+  "debugging",
+] as const;
+
+/**
  * Tool definitions
  */
 const tools: Tool[] = [
@@ -494,6 +515,53 @@ CHANT: https://github.com/lex00/chant`,
         },
       },
       required: ["repo", "spec_id"],
+    },
+  },
+  {
+    name: "filter_lessons",
+    description: `Filter and search LESSONS.md entries by difficulty level and CS concepts.
+
+This tool helps you find learning materials tailored to your skill level and interests.
+It parses LESSONS.md to find bug entries tagged with difficulty (easy/medium/hard) and
+CS concepts (race-conditions, async-await, memory-management, type-systems, etc.).
+
+TYPICAL WORKFLOW:
+1. Find all easy lessons: filter_lessons {difficulty: "easy"}
+2. Find lessons on async-await: filter_lessons {concepts: ["async-await"]}
+3. Find medium lessons on both concurrency and caching: filter_lessons {difficulty: "medium", concepts: ["concurrency", "caching"]}
+4. Get concept statistics: filter_lessons {show_stats: true}
+
+PRACTICAL EXAMPLES:
+- Find beginner-friendly lessons: filter_lessons {difficulty: "easy"}
+- Learn about type systems: filter_lessons {concepts: ["type-systems"]}
+- Hard lessons on memory management: filter_lessons {difficulty: "hard", concepts: ["memory-management"]}
+- See all concepts you've mastered: filter_lessons {show_stats: true}
+
+CONCEPT TAXONOMY:
+${CONCEPT_TAXONOMY.map(c => `- ${c}`).join("\n")}`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        difficulty: {
+          type: "string",
+          description: "Filter by difficulty level: 'easy', 'medium', or 'hard'. Optional: returns all levels if omitted.",
+          enum: ["easy", "medium", "hard"],
+        },
+        concepts: {
+          type: "array",
+          items: { type: "string" },
+          description: `Filter by CS concepts. Returns entries that have ANY of the specified concepts. Valid concepts: ${CONCEPT_TAXONOMY.join(", ")}`,
+        },
+        show_stats: {
+          type: "boolean",
+          description: "Optional: show concept statistics and mastery tracking (default: false). Displays concepts learned, frequency across bugs, and cross-bug patterns.",
+        },
+        limit: {
+          type: "number",
+          description: "Maximum entries to return (1-50, default: 10). Higher values show more lessons.",
+        },
+      },
+      required: [],
     },
   },
   {
@@ -1179,6 +1247,299 @@ function extractTargetFiles(issueBody: string, projectType: string): string[] {
   return files.slice(0, 10); // Limit to 10 files
 }
 
+/**
+ * Parse LESSONS.md and extract bug entries with metadata
+ */
+interface LessonEntry {
+  id: string;
+  title: string;
+  difficulty?: string;
+  concepts: string[];
+  content: string;
+  lineStart: number;
+  lineEnd: number;
+}
+
+function parseLessonsFile(filePath: string): LessonEntry[] {
+  const content = fs.readFileSync(filePath, "utf-8");
+  const lines = content.split("\n");
+  const entries: LessonEntry[] = [];
+
+  // Regex to match h3 headers (### Title) which denote bug entries
+  const h3Regex = /^### (.+)$/;
+
+  for (let i = 0; i < lines.length; i++) {
+    const match = lines[i].match(h3Regex);
+    if (match) {
+      const title = match[1];
+      const lineStart = i;
+
+      // Look for YAML frontmatter in the next few lines
+      let difficulty = undefined;
+      let concepts: string[] = [];
+      let frontmatterEnd = i + 1;
+
+      // Check if the next line starts with ---
+      if (lines[i + 1] === "---") {
+        frontmatterEnd = i + 2;
+        // Parse YAML-like frontmatter
+        while (frontmatterEnd < lines.length && lines[frontmatterEnd] !== "---") {
+          const line = lines[frontmatterEnd];
+          if (line.startsWith("difficulty:")) {
+            difficulty = line.replace("difficulty:", "").trim().toLowerCase();
+          } else if (line.startsWith("concepts:")) {
+            // Start parsing the concepts array
+            const conceptsStart = frontmatterEnd;
+            frontmatterEnd++;
+            while (
+              frontmatterEnd < lines.length &&
+              lines[frontmatterEnd].startsWith("  - ")
+            ) {
+              const concept = lines[frontmatterEnd].replace("  - ", "").trim();
+              if (concept) concepts.push(concept);
+              frontmatterEnd++;
+            }
+            frontmatterEnd--; // Back up one since the loop will increment
+          }
+          frontmatterEnd++;
+        }
+        if (frontmatterEnd < lines.length && lines[frontmatterEnd] === "---") {
+          frontmatterEnd++;
+        }
+      }
+
+      // Find the end of this entry (next h3 or h2, or end of file)
+      let lineEnd = lines.length;
+      for (let j = i + 1; j < lines.length; j++) {
+        if (lines[j].match(/^## /) || lines[j].match(/^### /)) {
+          lineEnd = j;
+          break;
+        }
+      }
+
+      const entryContent = lines.slice(frontmatterEnd, lineEnd).join("\n");
+      const id = title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "");
+
+      entries.push({
+        id,
+        title,
+        difficulty,
+        concepts,
+        content: entryContent.trim(),
+        lineStart,
+        lineEnd,
+      });
+
+      i = lineEnd - 1;
+    }
+  }
+
+  return entries;
+}
+
+/**
+ * Filter lessons by difficulty and concepts
+ */
+async function filterLessons(params: {
+  difficulty?: string;
+  concepts?: string[];
+  show_stats?: boolean;
+  limit?: number;
+}): Promise<string> {
+  const limitValidation = validateNumberRange(
+    params.limit,
+    "Limit",
+    1,
+    50,
+    false
+  );
+  if (!limitValidation.isValid) {
+    return `Error: ${limitValidation.error}`;
+  }
+
+  if (params.difficulty) {
+    const diffValidation = validateEnum(
+      params.difficulty,
+      "Difficulty",
+      DIFFICULTY_LEVELS as any,
+      false
+    );
+    if (!diffValidation.isValid) {
+      return `Error: ${diffValidation.error}`;
+    }
+  }
+
+  if (params.concepts) {
+    const conceptsValidation = validateStringArray(
+      params.concepts,
+      "Concepts",
+      10,
+      50
+    );
+    if (!conceptsValidation.isValid) {
+      return `Error: ${conceptsValidation.error}`;
+    }
+
+    // Validate each concept
+    for (const concept of params.concepts) {
+      if (
+        !(CONCEPT_TAXONOMY as readonly string[]).includes(
+          concept.toLowerCase()
+        )
+      ) {
+        return `Error: Unknown concept '${concept}'. Valid concepts: ${CONCEPT_TAXONOMY.join(
+          ", "
+        )}`;
+      }
+    }
+  }
+
+  const {
+    difficulty,
+    concepts = [],
+    show_stats = false,
+    limit = 10,
+  } = params;
+  const lessonsPath = path.join(process.cwd(), "LESSONS.md");
+
+  try {
+    if (!fs.existsSync(lessonsPath)) {
+      return `Error: LESSONS.md not found at ${lessonsPath}`;
+    }
+
+    const entries = parseLessonsFile(lessonsPath);
+
+    // Filter entries
+    let filtered = entries.filter((entry) => {
+      // Filter by difficulty
+      if (difficulty && entry.difficulty !== difficulty) {
+        return false;
+      }
+
+      // Filter by concepts (match if entry has ANY of the specified concepts)
+      if (concepts.length > 0) {
+        const conceptsLower = concepts.map((c) => c.toLowerCase());
+        const hasMatchingConcept = entry.concepts.some((c) =>
+          conceptsLower.includes(c.toLowerCase())
+        );
+        if (!hasMatchingConcept) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    // Limit results
+    filtered = filtered.slice(0, limit);
+
+    let result = `# Filtered Lessons\n\n`;
+
+    if (params.difficulty) {
+      result += `**Difficulty:** ${difficulty}\n`;
+    }
+    if (concepts.length > 0) {
+      result += `**Concepts:** ${concepts.join(", ")}\n`;
+    }
+    if (params.difficulty || concepts.length > 0) {
+      result += `\n`;
+    }
+
+    if (filtered.length === 0) {
+      result += `No lessons found matching your criteria.\n\n`;
+      result += `Available concepts: ${CONCEPT_TAXONOMY.join(", ")}\n`;
+      result += `Available difficulties: ${DIFFICULTY_LEVELS.join(", ")}\n`;
+      return result;
+    }
+
+    result += `Found ${filtered.length} matching lesson(s):\n\n`;
+
+    for (const entry of filtered) {
+      result += `## ${entry.title}\n`;
+      if (entry.difficulty) {
+        result += `- **Difficulty:** ${entry.difficulty}\n`;
+      }
+      if (entry.concepts.length > 0) {
+        result += `- **Concepts:** ${entry.concepts.join(", ")}\n`;
+      }
+      result += `\n${entry.content.slice(0, 500)}\n`;
+      if (entry.content.length > 500) {
+        result += `...\n`;
+      }
+      result += `\n---\n\n`;
+    }
+
+    // Show statistics if requested
+    if (show_stats) {
+      result += `## Statistics\n\n`;
+
+      // Count concepts across all entries
+      const conceptFrequency: Record<string, number> = {};
+      const allEntries = parseLessonsFile(lessonsPath);
+      for (const entry of allEntries) {
+        for (const concept of entry.concepts) {
+          conceptFrequency[concept] = (conceptFrequency[concept] || 0) + 1;
+        }
+      }
+
+      // Count by difficulty
+      const byDifficulty: Record<string, number> = {};
+      for (const entry of allEntries) {
+        if (entry.difficulty) {
+          byDifficulty[entry.difficulty] =
+            (byDifficulty[entry.difficulty] || 0) + 1;
+        }
+      }
+
+      result += `### Concepts Mastered (Frequency)\n`;
+      const sortedConcepts = Object.entries(conceptFrequency).sort(
+        (a, b) => b[1] - a[1]
+      );
+      for (const [concept, count] of sortedConcepts) {
+        result += `- **${concept}**: ${count} bug(s)\n`;
+      }
+
+      result += `\n### Lessons by Difficulty\n`;
+      for (const diff of DIFFICULTY_LEVELS) {
+        const count = byDifficulty[diff] || 0;
+        result += `- **${diff}**: ${count} lesson(s)\n`;
+      }
+
+      result += `\n### Cross-Bug Pattern Detection\n`;
+      const patterns = new Map<string, string[]>();
+      for (const entry of allEntries) {
+        if (entry.concepts.length > 1) {
+          const key = entry.concepts.sort().join(" + ");
+          if (!patterns.has(key)) {
+            patterns.set(key, []);
+          }
+          patterns.get(key)!.push(entry.title);
+        }
+      }
+
+      const sortedPatterns = Array.from(patterns.entries()).sort(
+        (a, b) => b[1].length - a[1].length
+      );
+      if (sortedPatterns.length > 0) {
+        for (const [pattern, titles] of sortedPatterns.slice(0, 5)) {
+          if (titles.length > 1) {
+            result += `- **${pattern}**: Found in ${titles.length} lessons\n`;
+          }
+        }
+      } else {
+        result += `No patterns found (concepts typically appear in single lessons)\n`;
+      }
+    }
+
+    return result;
+  } catch (error: any) {
+    return `Error filtering lessons: ${error.message}`;
+  }
+}
+
 // =============================================================================
 // Chant Tool Implementations (https://github.com/lex00/chant)
 // =============================================================================
@@ -1773,6 +2134,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case "research_workflow":
         result = await researchWorkflow(args as any);
+        break;
+      case "filter_lessons":
+        result = await filterLessons(args as any);
         break;
       default:
         result = `Unknown tool: ${name}`;
