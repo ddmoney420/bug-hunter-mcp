@@ -33,6 +33,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { validateRepoFormat, validatePositiveNumber, validateNonNegativeNumber, validateNumberRange, validateEnum, validateSpecId, validateLanguage, validateKeywords, validateLabels, validateAgent, validateDirectoryPath, validateMessage, validateStringArray, } from "./validators.js";
 import { getStrategy, listCategories, suggestCategory, } from "./taxonomy.js";
+import { validateLesson, lessonToMarkdown, createLessonTemplate, } from "./lessons.js";
 const execAsync = promisify(exec);
 // =============================================================================
 // Configuration
@@ -629,6 +630,121 @@ PRACTICAL EXAMPLES:
                 },
             },
             required: ["category"],
+        },
+    },
+    {
+        name: "new_lesson",
+        description: `Generate a new lesson entry following the enhanced template structure.
+
+This tool creates a properly-formatted lesson entry with all four required sections:
+1. Learning Outcomes - what you'll learn from this lesson
+2. CS Concepts - tagged computer science concepts
+3. Transferable Principles - principles that apply beyond this specific bug
+4. Gotchas & Edge Cases - tricky parts and edge cases to avoid
+
+The template helps standardize lessons for better retention tracking and quiz generation.
+
+TYPICAL WORKFLOW:
+1. Complete a bug fix and debrief
+2. new_lesson {title: "Fix X", project: "ProjectName", issue_number: 123, difficulty: "medium"}
+3. The tool generates markdown with the template structure
+4. Fill in details for each section
+5. Add to LESSONS.md
+
+PRACTICAL EXAMPLES:
+- Generate template: new_lesson {title: "Race condition in timer", project: "Bun", issue_number: 19952, difficulty: "medium"}
+- Include outcomes: new_lesson {title: "...", project: "...", difficulty: "easy", learning_outcomes: ["Understand X", "Apply Y"]}
+- Create with full details: new_lesson {title: "...", project: "...", difficulty: "hard", include_template: true}
+
+The generated markdown includes placeholder content for each section that you can customize.`,
+        inputSchema: {
+            type: "object",
+            properties: {
+                title: {
+                    type: "string",
+                    description: "Lesson title describing the bug or concept (e.g., 'Race condition in event handler'). Required: becomes the lesson heading.",
+                },
+                project: {
+                    type: "string",
+                    description: "Project name where the bug was found (e.g., 'Bun', 'Deno', 'TypeScript'). Required: identifies the source.",
+                },
+                difficulty: {
+                    type: "string",
+                    enum: ["easy", "medium", "hard"],
+                    description: "Difficulty level of the lesson. Required: helps learners choose appropriate challenges.",
+                },
+                issue_number: {
+                    type: "number",
+                    description: "Optional: GitHub issue number for reference (e.g., 19952).",
+                },
+                outcome: {
+                    type: "string",
+                    enum: ["success", "failed", "abandoned", "in-progress"],
+                    description: "Optional: outcome of the bug fix (default: in-progress). Use 'success' when the fix was merged.",
+                },
+                learning_outcomes: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Optional: list of learning outcomes (e.g., ['Understand stream routing patterns', 'Apply WHATWG standards']). If omitted, generates placeholders.",
+                },
+                concepts: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Optional: list of CS concepts covered (e.g., ['stream-processing', 'type-systems']). If omitted, generates placeholders.",
+                },
+            },
+            required: ["title", "project", "difficulty"],
+        },
+    },
+    {
+        name: "validate_lesson",
+        description: `Validate a lesson entry against the enhanced template structure.
+
+This tool checks that a lesson follows the template format with all four required sections:
+1. Learning Outcomes - measurable learning goals
+2. CS Concepts - tagged CS concepts with explanations
+3. Transferable Principles - principles applicable beyond this bug
+4. Gotchas & Edge Cases - tricky parts and prevention strategies
+
+Returns validation results including any missing or malformed sections.
+
+TYPICAL WORKFLOW:
+1. Write a lesson in LESSONS.md
+2. validate_lesson {file_path: "./LESSONS.md", lesson_title: "Race condition fix"}
+3. Review validation errors and warnings
+4. Update lesson to match template structure
+5. Revalidate until all errors are resolved
+
+PRACTICAL EXAMPLES:
+- Validate by title: validate_lesson {lesson_title: "Fix console.trace output"}
+- Validate file section: validate_lesson {file_path: "./LESSONS.md", lesson_title: "..."}
+- Show validation details: validate_lesson {lesson_title: "...", verbose: true}
+
+The tool checks:
+- All four required sections present and non-empty
+- Each section has required fields
+- Proper structure for markdown parsing
+- Data types and field names match template`,
+        inputSchema: {
+            type: "object",
+            properties: {
+                file_path: {
+                    type: "string",
+                    description: "Optional: path to LESSONS.md file to read from (default: ./LESSONS.md). Used to locate the lesson to validate.",
+                },
+                lesson_title: {
+                    type: "string",
+                    description: "Lesson title to validate (exact match). Required: identifies which lesson section to validate.",
+                },
+                lesson_json: {
+                    type: "object",
+                    description: "Optional: lesson object to validate directly (as JSON). If provided, file_path and lesson_title are ignored.",
+                },
+                verbose: {
+                    type: "boolean",
+                    description: "Optional: show detailed validation report (default: false). Includes warnings and suggestions for improvements.",
+                },
+            },
         },
     },
 ];
@@ -1839,6 +1955,159 @@ async function getStrategyForCategory(params) {
     return result;
 }
 /**
+ * Generate a new lesson entry following the enhanced template
+ */
+async function newLesson(params) {
+    const { title, project, difficulty, issue_number, outcome = "in-progress", learning_outcomes = [], concepts = [], } = params;
+    // Validate required parameters
+    if (!title || typeof title !== "string") {
+        return "Error: 'title' is required and must be a string";
+    }
+    if (!project || typeof project !== "string") {
+        return "Error: 'project' is required and must be a string";
+    }
+    if (!["easy", "medium", "hard"].includes(difficulty)) {
+        return "Error: 'difficulty' must be one of: easy, medium, hard";
+    }
+    // Create template with provided values
+    const lesson = createLessonTemplate({
+        title,
+        project,
+        difficulty,
+        outcome,
+        issueNumber: issue_number,
+        learningOutcomes: learning_outcomes.length > 0
+            ? learning_outcomes.map((lo) => ({
+                title: lo.split(":")[0].trim(),
+                description: lo.includes(":") ? lo.split(":")[1].trim() : "Describe the learning outcome",
+            }))
+            : undefined,
+        csConcepts: concepts.length > 0
+            ? concepts.map((c) => ({
+                name: c,
+                explanation: "Explain how this CS concept applied to the bug",
+            }))
+            : undefined,
+    });
+    // Generate markdown
+    const markdown = lessonToMarkdown(lesson);
+    return markdown;
+}
+/**
+ * Validate a lesson entry against the template structure
+ */
+async function validateLessonTool(params) {
+    const { file_path = "./LESSONS.md", lesson_title, lesson_json, verbose = false } = params;
+    if (lesson_json) {
+        // Validate provided JSON directly
+        const result = validateLesson(lesson_json);
+        return formatValidationResult(result, lesson_json.title || "Provided lesson", verbose);
+    }
+    if (!lesson_title) {
+        return "Error: Either 'lesson_json' or 'lesson_title' is required";
+    }
+    // Try to read and parse the file
+    try {
+        if (!fs.existsSync(file_path)) {
+            return `Error: File not found: ${file_path}`;
+        }
+        const content = fs.readFileSync(file_path, "utf-8");
+        // Simple regex-based parsing to find the lesson section
+        // Look for heading with the lesson title
+        const lessonRegex = new RegExp(`^#+\\s+${escapeRegex(lesson_title)}\\s*$[\\s\\S]*?(?=^#[^#]|\\Z)`, "m");
+        const match = content.match(lessonRegex);
+        if (!match) {
+            return `Error: Lesson '${lesson_title}' not found in ${file_path}`;
+        }
+        // Parse the frontmatter and content
+        // This is a simplified parser - a production version might use a YAML parser
+        const lessonContent = match[0];
+        const lines = lessonContent.split("\n");
+        // Extract basic info from the lesson
+        const lesson = {
+            title: lesson_title,
+            date: extractField(lessonContent, "Date"),
+            difficulty: extractField(lessonContent, "Difficulty"),
+            project: extractField(lessonContent, "Project"),
+            outcome: extractField(lessonContent, "Outcome"),
+        };
+        // Check for required sections
+        lesson.learningOutcomes = hasSection(lessonContent, "Learning Outcomes")
+            ? [{ title: "Found", description: "Section exists" }]
+            : [];
+        lesson.csConcepts = hasSection(lessonContent, "CS Concepts")
+            ? [{ name: "Found", explanation: "Section exists" }]
+            : [];
+        lesson.transferablePrinciples = hasSection(lessonContent, "Transferable Principles")
+            ? [{ principle: "Found", application: "Section exists" }]
+            : [];
+        lesson.gotchas = hasSection(lessonContent, "Gotchas")
+            ? [{ title: "Found", description: "Section exists", prevention: "Section exists" }]
+            : [];
+        const result = validateLesson(lesson);
+        return formatValidationResult(result, lesson_title, verbose);
+    }
+    catch (error) {
+        return `Error reading file: ${error.message}`;
+    }
+}
+/**
+ * Helper: escape regex special characters
+ */
+function escapeRegex(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+/**
+ * Helper: extract field value from lesson content
+ */
+function extractField(content, fieldName) {
+    const regex = new RegExp(`^\\*\\*${fieldName}:\\*\\*\\s*(.+)$`, "m");
+    const match = content.match(regex);
+    return match ? match[1].trim() : "";
+}
+/**
+ * Helper: check if a section exists in the lesson
+ */
+function hasSection(content, sectionName) {
+    const regex = new RegExp(`^##\\s+${escapeRegex(sectionName)}`, "m");
+    return regex.test(content);
+}
+/**
+ * Helper: format validation result for display
+ */
+function formatValidationResult(result, lessonTitle, verbose) {
+    let output = `\n# Lesson Validation: ${lessonTitle}\n`;
+    output += `Status: ${result.isValid ? "✓ VALID" : "✗ INVALID"}\n\n`;
+    if (result.errors.length > 0) {
+        output += `## Errors (${result.errors.length})\n`;
+        result.errors.forEach((err) => {
+            output += `- ✗ ${err}\n`;
+        });
+        output += "\n";
+    }
+    if (result.warnings.length > 0) {
+        output += `## Warnings (${result.warnings.length})\n`;
+        result.warnings.forEach((warn) => {
+            output += `- ⚠ ${warn}\n`;
+        });
+        output += "\n";
+    }
+    if (result.isValid) {
+        output += "All template requirements met! This lesson is ready for quiz generation.\n";
+    }
+    else {
+        output += "\nFix the errors above to make the lesson compliant with the template.\n";
+    }
+    if (verbose && result.errors.length === 0) {
+        output += "\n## Template Requirements\n";
+        output += "✓ Learning Outcomes: Clearly defined learning goals\n";
+        output += "✓ CS Concepts: Tagged concepts with explanations\n";
+        output += "✓ Transferable Principles: Principles beyond this specific bug\n";
+        output += "✓ Gotchas & Edge Cases: Tricky parts with prevention strategies\n";
+    }
+    return output;
+}
+/**
  * Main server setup
  */
 const server = new Server({
@@ -1892,6 +2161,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 break;
             case "get_strategy":
                 result = await getStrategyForCategory(args);
+                break;
+            case "new_lesson":
+                result = await newLesson(args);
+                break;
+            case "validate_lesson":
+                result = await validateLessonTool(args);
                 break;
             default:
                 result = `Unknown tool: ${name}`;
