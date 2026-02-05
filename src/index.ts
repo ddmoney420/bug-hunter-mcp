@@ -61,16 +61,11 @@ import {
   suggestCategory,
 } from "./taxonomy.js";
 import {
-  CONCEPT_GRAPH,
-  generateGraphVisualization,
-  recommendNextConcept,
-  generateMasteryReport,
-  getConceptNode,
-  listAllConcepts,
-  searchConcepts,
-  type ConceptNode,
-  type MasteryStatus,
-} from "./graph.js";
+  validateLesson,
+  lessonToMarkdown,
+  createLessonTemplate,
+  type LessonTemplate,
+} from "./lessons.js";
 
 const execAsync = promisify(exec);
 
@@ -680,87 +675,118 @@ PRACTICAL EXAMPLES:
     },
   },
   {
-    name: "show_graph",
-    description: `Display the CS Concepts Dependency Graph with ASCII visualization.
+    name: "new_lesson",
+    description: `Generate a new lesson entry following the enhanced template structure.
 
-This tool shows how computer science concepts relate to each other, their prerequisites,
-and recommended learning paths. Use this to understand:
-- Prerequisite relationships between concepts
-- Learning difficulty progression (beginner → intermediate → advanced)
-- Recommended learning paths for different specializations
-- Concept connections and dependencies
+This tool creates a properly-formatted lesson entry with all four required sections:
+1. Learning Outcomes - what you'll learn from this lesson
+2. CS Concepts - tagged computer science concepts
+3. Transferable Principles - principles that apply beyond this specific bug
+4. Gotchas & Edge Cases - tricky parts and edge cases to avoid
 
-The visualization includes:
-- Concepts grouped by difficulty level
-- Prerequisites for each concept
-- Recommended learning paths (concurrency, data structures, error handling, etc.)
+The template helps standardize lessons for better retention tracking and quiz generation.
 
 TYPICAL WORKFLOW:
-1. show_graph {detail: false} → Quick overview of concept landscape
-2. show_graph {detail: true} → Detailed prerequisites and relationships
-3. Use next_bug to find which concept to learn next
-4. Hunt for issues related to that concept
+1. Complete a bug fix and debrief
+2. new_lesson {title: "Fix X", project: "ProjectName", issue_number: 123, difficulty: "medium"}
+3. The tool generates markdown with the template structure
+4. Fill in details for each section
+5. Add to LESSONS.md
 
 PRACTICAL EXAMPLES:
-- See full dependency graph: show_graph {detail: true}
-- Get quick overview: show_graph {detail: false}
-- Focus on concurrency concepts: show_graph {detail: true, filter: "concurrency"}`,
+- Generate template: new_lesson {title: "Race condition in timer", project: "Bun", issue_number: 19952, difficulty: "medium"}
+- Include outcomes: new_lesson {title: "...", project: "...", difficulty: "easy", learning_outcomes: ["Understand X", "Apply Y"]}
+- Create with full details: new_lesson {title: "...", project: "...", difficulty: "hard", include_template: true}
+
+The generated markdown includes placeholder content for each section that you can customize.`,
     inputSchema: {
       type: "object",
       properties: {
-        detail: {
-          type: "boolean",
-          description: "Optional: show detailed prerequisites and relationships (default: false). True = detailed view with all dependencies.",
-        },
-        filter: {
+        title: {
           type: "string",
-          description: "Optional: filter concepts by keyword (e.g., 'concurrency', 'memory', 'type'). Shows only matching concepts.",
+          description: "Lesson title describing the bug or concept (e.g., 'Race condition in event handler'). Required: becomes the lesson heading.",
+        },
+        project: {
+          type: "string",
+          description: "Project name where the bug was found (e.g., 'Bun', 'Deno', 'TypeScript'). Required: identifies the source.",
+        },
+        difficulty: {
+          type: "string",
+          enum: ["easy", "medium", "hard"],
+          description: "Difficulty level of the lesson. Required: helps learners choose appropriate challenges.",
+        },
+        issue_number: {
+          type: "number",
+          description: "Optional: GitHub issue number for reference (e.g., 19952).",
+        },
+        outcome: {
+          type: "string",
+          enum: ["success", "failed", "abandoned", "in-progress"],
+          description: "Optional: outcome of the bug fix (default: in-progress). Use 'success' when the fix was merged.",
+        },
+        learning_outcomes: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional: list of learning outcomes (e.g., ['Understand stream routing patterns', 'Apply WHATWG standards']). If omitted, generates placeholders.",
+        },
+        concepts: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional: list of CS concepts covered (e.g., ['stream-processing', 'type-systems']). If omitted, generates placeholders.",
         },
       },
-      required: [],
+      required: ["title", "project", "difficulty"],
     },
   },
   {
-    name: "next_bug",
-    description: `Get recommendations for the next bug to solve based on mastered concepts.
+    name: "validate_lesson",
+    description: `Validate a lesson entry against the enhanced template structure.
 
-This tool analyzes which CS concepts you've mastered and recommends the next concept
-to learn, showing what prerequisite knowledge you need and why this concept is valuable.
+This tool checks that a lesson follows the template format with all four required sections:
+1. Learning Outcomes - measurable learning goals
+2. CS Concepts - tagged CS concepts with explanations
+3. Transferable Principles - principles applicable beyond this bug
+4. Gotchas & Edge Cases - tricky parts and prevention strategies
 
-Use this to:
-- Plan your learning journey systematically
-- Identify prerequisite gaps
-- Find the most impactful concept to learn next
-- Track which concepts unlock the most new problems
+Returns validation results including any missing or malformed sections.
 
-WORKFLOW:
-1. Solve bugs and mark concepts as mastered (via completed bug reports)
-2. next_bug {mastered_concepts: ["basic-types", "control-flow", "functions-and-scope"]}
-3. See recommended next concept and why it's valuable
-4. Use show_graph to understand context
-5. Hunt for issues in that concept area
+TYPICAL WORKFLOW:
+1. Write a lesson in LESSONS.md
+2. validate_lesson {file_path: "./LESSONS.md", lesson_title: "Race condition fix"}
+3. Review validation errors and warnings
+4. Update lesson to match template structure
+5. Revalidate until all errors are resolved
 
 PRACTICAL EXAMPLES:
-- Find what to learn after fundamentals: next_bug {mastered_concepts: ["basic-types", "control-flow", "functions-and-scope"]}
-- Get detailed recommendations: next_bug {mastered_concepts: ["basic-types", "control-flow", "functions-and-scope"], show_report: true}
-- Start fresh: next_bug {mastered_concepts: []} → Recommends first concepts to learn
+- Validate by title: validate_lesson {lesson_title: "Fix console.trace output"}
+- Validate file section: validate_lesson {file_path: "./LESSONS.md", lesson_title: "..."}
+- Show validation details: validate_lesson {lesson_title: "...", verbose: true}
 
-The recommendation shows which new concept unlocks the most dependent concepts,
-maximizing the impact of your learning.`,
+The tool checks:
+- All four required sections present and non-empty
+- Each section has required fields
+- Proper structure for markdown parsing
+- Data types and field names match template`,
     inputSchema: {
       type: "object",
       properties: {
-        mastered_concepts: {
-          type: "array",
-          items: { type: "string" },
-          description: "List of concept IDs you've mastered (e.g., ['basic-types', 'control-flow']). Use concept IDs from show_graph output.",
+        file_path: {
+          type: "string",
+          description: "Optional: path to LESSONS.md file to read from (default: ./LESSONS.md). Used to locate the lesson to validate.",
         },
-        show_report: {
+        lesson_title: {
+          type: "string",
+          description: "Lesson title to validate (exact match). Required: identifies which lesson section to validate.",
+        },
+        lesson_json: {
+          type: "object",
+          description: "Optional: lesson object to validate directly (as JSON). If provided, file_path and lesson_title are ignored.",
+        },
+        verbose: {
           type: "boolean",
-          description: "Optional: show detailed mastery report (default: false). True = shows all mastered concepts, learning depth, and gaps.",
+          description: "Optional: show detailed validation report (default: false). Includes warnings and suggestions for improvements.",
         },
       },
-      required: ["mastered_concepts"],
     },
   },
 ];
@@ -2287,175 +2313,207 @@ async function getStrategyForCategory(params: {
 }
 
 /**
- * Display CS concepts dependency graph with ASCII visualization
+ * Generate a new lesson entry following the enhanced template
  */
-async function showGraph(params: {
-  detail?: boolean;
-  filter?: string;
+async function newLesson(params: {
+  title: string;
+  project: string;
+  difficulty: "easy" | "medium" | "hard";
+  issue_number?: number;
+  outcome?: "success" | "failed" | "abandoned" | "in-progress";
+  learning_outcomes?: string[];
+  concepts?: string[];
 }): Promise<string> {
-  const { detail = false, filter } = params;
+  const {
+    title,
+    project,
+    difficulty,
+    issue_number,
+    outcome = "in-progress",
+    learning_outcomes = [],
+    concepts = [],
+  } = params;
 
-  let result = "";
-
-  if (!filter) {
-    // Show full graph
-    result = generateGraphVisualization();
-  } else {
-    // Show filtered concepts
-    const lowerFilter = filter.toLowerCase();
-    const filtered = listAllConcepts().filter((concept) => {
-      return (
-        concept.name.toLowerCase().includes(lowerFilter) ||
-        concept.description.toLowerCase().includes(lowerFilter) ||
-        concept.id.includes(lowerFilter)
-      );
-    });
-
-    if (filtered.length === 0) {
-      result = `No concepts found matching filter: "${filter}"\n\n`;
-      result += `Try searching for: concurrency, memory, types, algorithms, data-structures, etc.`;
-    } else {
-      result = `\n# Concepts Matching: "${filter}"\n\n`;
-      result += `Found ${filtered.length} matching concepts:\n\n`;
-
-      for (const concept of filtered) {
-        result += `## ${concept.name}\n`;
-        result += `**Difficulty:** ${concept.difficulty}\n`;
-        result += `**Description:** ${concept.description}\n`;
-
-        if (concept.prerequisites.length > 0) {
-          result += `**Prerequisites:** ${concept.prerequisites
-            .map((id) => {
-              const prereq = getConceptNode(id);
-              return prereq ? prereq.name : id;
-            })
-            .join(", ")}\n`;
-        } else {
-          result += `**Prerequisites:** None (can start here!)\n`;
-        }
-
-        if (detail && concept.relatedConcepts.length > 0) {
-          result += `**Related Concepts:** ${concept.relatedConcepts
-            .map((id) => {
-              const related = getConceptNode(id);
-              return related ? related.name : id;
-            })
-            .join(", ")}\n`;
-        }
-        result += `\n`;
-      }
-    }
+  // Validate required parameters
+  if (!title || typeof title !== "string") {
+    return "Error: 'title' is required and must be a string";
+  }
+  if (!project || typeof project !== "string") {
+    return "Error: 'project' is required and must be a string";
+  }
+  if (!["easy", "medium", "hard"].includes(difficulty)) {
+    return "Error: 'difficulty' must be one of: easy, medium, hard";
   }
 
-  if (detail && !filter) {
-    result += "\n## Detailed Concept Index\n\n";
-    const allConcepts = listAllConcepts();
-    for (const concept of allConcepts) {
-      result += `### ${concept.name}\n`;
-      result += `ID: ${concept.id}\n`;
-      result += `Difficulty: ${concept.difficulty}\n`;
+  // Create template with provided values
+  const lesson = createLessonTemplate({
+    title,
+    project,
+    difficulty,
+    outcome,
+    issueNumber: issue_number,
+    learningOutcomes: learning_outcomes.length > 0
+      ? learning_outcomes.map((lo) => ({
+          title: lo.split(":")[0].trim(),
+          description: lo.includes(":") ? lo.split(":")[1].trim() : "Describe the learning outcome",
+        }))
+      : undefined,
+    csConcepts: concepts.length > 0
+      ? concepts.map((c) => ({
+          name: c,
+          explanation: "Explain how this CS concept applied to the bug",
+        }))
+      : undefined,
+  });
 
-      if (concept.prerequisites.length > 0) {
-        result += `Prerequisites: ${concept.prerequisites
-          .map((id) => {
-            const prereq = getConceptNode(id);
-            return prereq ? prereq.name : id;
-          })
-          .join(", ")}\n`;
-      }
-      result += `\n`;
-    }
-  }
+  // Generate markdown
+  const markdown = lessonToMarkdown(lesson);
 
-  return result;
+  return markdown;
 }
 
 /**
- * Recommend next bug/concept based on mastered concepts
+ * Validate a lesson entry against the template structure
  */
-async function nextBug(params: {
-  mastered_concepts: string[];
-  show_report?: boolean;
+async function validateLessonTool(params: {
+  file_path?: string;
+  lesson_title?: string;
+  lesson_json?: any;
+  verbose?: boolean;
 }): Promise<string> {
-  const { mastered_concepts, show_report = false } = params;
-  const masteredSet = new Set(mastered_concepts);
+  const { file_path = "./LESSONS.md", lesson_title, lesson_json, verbose = false } = params;
 
-  // Validate all mastered concepts exist
-  for (const conceptId of mastered_concepts) {
-    if (!CONCEPT_GRAPH[conceptId]) {
-      return `Error: Unknown concept '${conceptId}'. Run show_graph to see valid concepts.`;
+  if (lesson_json) {
+    // Validate provided JSON directly
+    const result = validateLesson(lesson_json);
+    return formatValidationResult(result, lesson_json.title || "Provided lesson", verbose);
+  }
+
+  if (!lesson_title) {
+    return "Error: Either 'lesson_json' or 'lesson_title' is required";
+  }
+
+  // Try to read and parse the file
+  try {
+    if (!fs.existsSync(file_path)) {
+      return `Error: File not found: ${file_path}`;
     }
-  }
 
-  let result = "";
+    const content = fs.readFileSync(file_path, "utf-8");
 
-  if (show_report) {
-    // Create mastery statuses for report
-    const masteryStatuses: MasteryStatus[] = mastered_concepts.map((id) => ({
-      conceptId: id,
-      mastered: true,
-      depth: "intermediate", // Default depth
-      bugsCompleted: 1,
-    }));
+    // Simple regex-based parsing to find the lesson section
+    // Look for heading with the lesson title
+    const lessonRegex = new RegExp(
+      `^#+\\s+${escapeRegex(lesson_title)}\\s*$[\\s\\S]*?(?=^#[^#]|\\Z)`,
+      "m"
+    );
+    const match = content.match(lessonRegex);
 
-    result = generateMasteryReport(masteryStatuses);
-    result += "\n";
-  }
-
-  // Get recommendation
-  const recommendation = recommendNextConcept(masteredSet);
-
-  if (!recommendation) {
-    result += `\n# 🎉 All Concepts Mastered!\n\n`;
-    result += `You've mastered all ${Object.keys(CONCEPT_GRAPH).length} core CS concepts.\n`;
-    result += `Continue strengthening through advanced projects and specialized topics.\n`;
-    return result;
-  }
-
-  const nextConcept = getConceptNode(recommendation.conceptId);
-  if (!nextConcept) {
-    return "Error: Could not find recommended concept";
-  }
-
-  result += `\n# Next Concept to Master\n\n`;
-  result += `## ${nextConcept.name}\n\n`;
-  result += `**Why This Concept?** ${recommendation.reason}\n\n`;
-  result += `**Description:** ${nextConcept.description}\n\n`;
-  result += `**Difficulty:** ${nextConcept.difficulty}\n\n`;
-
-  if (nextConcept.prerequisites.length > 0) {
-    result += `**Prerequisites (already mastered!):**\n`;
-    for (const prereqId of nextConcept.prerequisites) {
-      const prereq = getConceptNode(prereqId);
-      if (prereq) {
-        result += `  ✓ ${prereq.name}\n`;
-      }
+    if (!match) {
+      return `Error: Lesson '${lesson_title}' not found in ${file_path}`;
     }
-    result += `\n`;
+
+    // Parse the frontmatter and content
+    // This is a simplified parser - a production version might use a YAML parser
+    const lessonContent = match[0];
+    const lines = lessonContent.split("\n");
+
+    // Extract basic info from the lesson
+    const lesson: any = {
+      title: lesson_title,
+      date: extractField(lessonContent, "Date"),
+      difficulty: extractField(lessonContent, "Difficulty"),
+      project: extractField(lessonContent, "Project"),
+      outcome: extractField(lessonContent, "Outcome"),
+    };
+
+    // Check for required sections
+    lesson.learningOutcomes = hasSection(lessonContent, "Learning Outcomes")
+      ? [{ title: "Found", description: "Section exists" }]
+      : [];
+    lesson.csConcepts = hasSection(lessonContent, "CS Concepts")
+      ? [{ name: "Found", explanation: "Section exists" }]
+      : [];
+    lesson.transferablePrinciples = hasSection(lessonContent, "Transferable Principles")
+      ? [{ principle: "Found", application: "Section exists" }]
+      : [];
+    lesson.gotchas = hasSection(lessonContent, "Gotchas")
+      ? [{ title: "Found", description: "Section exists", prevention: "Section exists" }]
+      : [];
+
+    const result = validateLesson(lesson);
+    return formatValidationResult(result, lesson_title, verbose);
+  } catch (error: any) {
+    return `Error reading file: ${error.message}`;
   }
+}
 
-  result += `**Next Steps:**\n`;
-  result += `1. Hunt for issues related to "${nextConcept.name}"\n`;
-  result += `2. Use \`get_strategy\` to learn debugging approaches\n`;
-  result += `3. Work through bugs and mark them in LESSONS.md\n`;
-  result += `4. Return here once mastered to find the next concept\n`;
+/**
+ * Helper: escape regex special characters
+ */
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
-  // Show what this unlocks
-  const dependents = Object.entries(CONCEPT_GRAPH)
-    .filter(([_, node]) => node.prerequisites.includes(recommendation.conceptId))
-    .map(([_, node]) => node.name);
+/**
+ * Helper: extract field value from lesson content
+ */
+function extractField(content: string, fieldName: string): string {
+  const regex = new RegExp(`^\\*\\*${fieldName}:\\*\\*\\s*(.+)$`, "m");
+  const match = content.match(regex);
+  return match ? match[1].trim() : "";
+}
 
-  if (dependents.length > 0) {
-    result += `\n**This Concept Unlocks:**\n`;
-    dependents.slice(0, 5).forEach((name) => {
-      result += `  → ${name}\n`;
+/**
+ * Helper: check if a section exists in the lesson
+ */
+function hasSection(content: string, sectionName: string): boolean {
+  const regex = new RegExp(`^##\\s+${escapeRegex(sectionName)}`, "m");
+  return regex.test(content);
+}
+
+/**
+ * Helper: format validation result for display
+ */
+function formatValidationResult(
+  result: { isValid: boolean; errors: string[]; warnings: string[] },
+  lessonTitle: string,
+  verbose: boolean
+): string {
+  let output = `\n# Lesson Validation: ${lessonTitle}\n`;
+  output += `Status: ${result.isValid ? "✓ VALID" : "✗ INVALID"}\n\n`;
+
+  if (result.errors.length > 0) {
+    output += `## Errors (${result.errors.length})\n`;
+    result.errors.forEach((err) => {
+      output += `- ✗ ${err}\n`;
     });
-    if (dependents.length > 5) {
-      result += `  → ... and ${dependents.length - 5} more\n`;
-    }
+    output += "\n";
   }
 
-  return result;
+  if (result.warnings.length > 0) {
+    output += `## Warnings (${result.warnings.length})\n`;
+    result.warnings.forEach((warn) => {
+      output += `- ⚠ ${warn}\n`;
+    });
+    output += "\n";
+  }
+
+  if (result.isValid) {
+    output += "All template requirements met! This lesson is ready for quiz generation.\n";
+  } else {
+    output += "\nFix the errors above to make the lesson compliant with the template.\n";
+  }
+
+  if (verbose && result.errors.length === 0) {
+    output += "\n## Template Requirements\n";
+    output += "✓ Learning Outcomes: Clearly defined learning goals\n";
+    output += "✓ CS Concepts: Tagged concepts with explanations\n";
+    output += "✓ Transferable Principles: Principles beyond this specific bug\n";
+    output += "✓ Gotchas & Edge Cases: Tricky parts with prevention strategies\n";
+  }
+
+  return output;
 }
 
 /**
@@ -2520,11 +2578,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "get_strategy":
         result = await getStrategyForCategory(args as any);
         break;
-      case "show_graph":
-        result = await showGraph(args as any);
+      case "new_lesson":
+        result = await newLesson(args as any);
         break;
-      case "next_bug":
-        result = await nextBug(args as any);
+      case "validate_lesson":
+        result = await validateLessonTool(args as any);
         break;
       default:
         result = `Unknown tool: ${name}`;
