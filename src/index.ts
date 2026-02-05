@@ -60,6 +60,17 @@ import {
   searchCategories,
   suggestCategory,
 } from "./taxonomy.js";
+import {
+  CONCEPT_GRAPH,
+  generateGraphVisualization,
+  recommendNextConcept,
+  generateMasteryReport,
+  getConceptNode,
+  listAllConcepts,
+  searchConcepts,
+  type ConceptNode,
+  type MasteryStatus,
+} from "./graph.js";
 
 const execAsync = promisify(exec);
 
@@ -666,6 +677,90 @@ PRACTICAL EXAMPLES:
         },
       },
       required: ["category"],
+    },
+  },
+  {
+    name: "show_graph",
+    description: `Display the CS Concepts Dependency Graph with ASCII visualization.
+
+This tool shows how computer science concepts relate to each other, their prerequisites,
+and recommended learning paths. Use this to understand:
+- Prerequisite relationships between concepts
+- Learning difficulty progression (beginner → intermediate → advanced)
+- Recommended learning paths for different specializations
+- Concept connections and dependencies
+
+The visualization includes:
+- Concepts grouped by difficulty level
+- Prerequisites for each concept
+- Recommended learning paths (concurrency, data structures, error handling, etc.)
+
+TYPICAL WORKFLOW:
+1. show_graph {detail: false} → Quick overview of concept landscape
+2. show_graph {detail: true} → Detailed prerequisites and relationships
+3. Use next_bug to find which concept to learn next
+4. Hunt for issues related to that concept
+
+PRACTICAL EXAMPLES:
+- See full dependency graph: show_graph {detail: true}
+- Get quick overview: show_graph {detail: false}
+- Focus on concurrency concepts: show_graph {detail: true, filter: "concurrency"}`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        detail: {
+          type: "boolean",
+          description: "Optional: show detailed prerequisites and relationships (default: false). True = detailed view with all dependencies.",
+        },
+        filter: {
+          type: "string",
+          description: "Optional: filter concepts by keyword (e.g., 'concurrency', 'memory', 'type'). Shows only matching concepts.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "next_bug",
+    description: `Get recommendations for the next bug to solve based on mastered concepts.
+
+This tool analyzes which CS concepts you've mastered and recommends the next concept
+to learn, showing what prerequisite knowledge you need and why this concept is valuable.
+
+Use this to:
+- Plan your learning journey systematically
+- Identify prerequisite gaps
+- Find the most impactful concept to learn next
+- Track which concepts unlock the most new problems
+
+WORKFLOW:
+1. Solve bugs and mark concepts as mastered (via completed bug reports)
+2. next_bug {mastered_concepts: ["basic-types", "control-flow", "functions-and-scope"]}
+3. See recommended next concept and why it's valuable
+4. Use show_graph to understand context
+5. Hunt for issues in that concept area
+
+PRACTICAL EXAMPLES:
+- Find what to learn after fundamentals: next_bug {mastered_concepts: ["basic-types", "control-flow", "functions-and-scope"]}
+- Get detailed recommendations: next_bug {mastered_concepts: ["basic-types", "control-flow", "functions-and-scope"], show_report: true}
+- Start fresh: next_bug {mastered_concepts: []} → Recommends first concepts to learn
+
+The recommendation shows which new concept unlocks the most dependent concepts,
+maximizing the impact of your learning.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        mastered_concepts: {
+          type: "array",
+          items: { type: "string" },
+          description: "List of concept IDs you've mastered (e.g., ['basic-types', 'control-flow']). Use concept IDs from show_graph output.",
+        },
+        show_report: {
+          type: "boolean",
+          description: "Optional: show detailed mastery report (default: false). True = shows all mastered concepts, learning depth, and gaps.",
+        },
+      },
+      required: ["mastered_concepts"],
     },
   },
 ];
@@ -2192,6 +2287,178 @@ async function getStrategyForCategory(params: {
 }
 
 /**
+ * Display CS concepts dependency graph with ASCII visualization
+ */
+async function showGraph(params: {
+  detail?: boolean;
+  filter?: string;
+}): Promise<string> {
+  const { detail = false, filter } = params;
+
+  let result = "";
+
+  if (!filter) {
+    // Show full graph
+    result = generateGraphVisualization();
+  } else {
+    // Show filtered concepts
+    const lowerFilter = filter.toLowerCase();
+    const filtered = listAllConcepts().filter((concept) => {
+      return (
+        concept.name.toLowerCase().includes(lowerFilter) ||
+        concept.description.toLowerCase().includes(lowerFilter) ||
+        concept.id.includes(lowerFilter)
+      );
+    });
+
+    if (filtered.length === 0) {
+      result = `No concepts found matching filter: "${filter}"\n\n`;
+      result += `Try searching for: concurrency, memory, types, algorithms, data-structures, etc.`;
+    } else {
+      result = `\n# Concepts Matching: "${filter}"\n\n`;
+      result += `Found ${filtered.length} matching concepts:\n\n`;
+
+      for (const concept of filtered) {
+        result += `## ${concept.name}\n`;
+        result += `**Difficulty:** ${concept.difficulty}\n`;
+        result += `**Description:** ${concept.description}\n`;
+
+        if (concept.prerequisites.length > 0) {
+          result += `**Prerequisites:** ${concept.prerequisites
+            .map((id) => {
+              const prereq = getConceptNode(id);
+              return prereq ? prereq.name : id;
+            })
+            .join(", ")}\n`;
+        } else {
+          result += `**Prerequisites:** None (can start here!)\n`;
+        }
+
+        if (detail && concept.relatedConcepts.length > 0) {
+          result += `**Related Concepts:** ${concept.relatedConcepts
+            .map((id) => {
+              const related = getConceptNode(id);
+              return related ? related.name : id;
+            })
+            .join(", ")}\n`;
+        }
+        result += `\n`;
+      }
+    }
+  }
+
+  if (detail && !filter) {
+    result += "\n## Detailed Concept Index\n\n";
+    const allConcepts = listAllConcepts();
+    for (const concept of allConcepts) {
+      result += `### ${concept.name}\n`;
+      result += `ID: ${concept.id}\n`;
+      result += `Difficulty: ${concept.difficulty}\n`;
+
+      if (concept.prerequisites.length > 0) {
+        result += `Prerequisites: ${concept.prerequisites
+          .map((id) => {
+            const prereq = getConceptNode(id);
+            return prereq ? prereq.name : id;
+          })
+          .join(", ")}\n`;
+      }
+      result += `\n`;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Recommend next bug/concept based on mastered concepts
+ */
+async function nextBug(params: {
+  mastered_concepts: string[];
+  show_report?: boolean;
+}): Promise<string> {
+  const { mastered_concepts, show_report = false } = params;
+  const masteredSet = new Set(mastered_concepts);
+
+  // Validate all mastered concepts exist
+  for (const conceptId of mastered_concepts) {
+    if (!CONCEPT_GRAPH[conceptId]) {
+      return `Error: Unknown concept '${conceptId}'. Run show_graph to see valid concepts.`;
+    }
+  }
+
+  let result = "";
+
+  if (show_report) {
+    // Create mastery statuses for report
+    const masteryStatuses: MasteryStatus[] = mastered_concepts.map((id) => ({
+      conceptId: id,
+      mastered: true,
+      depth: "intermediate", // Default depth
+      bugsCompleted: 1,
+    }));
+
+    result = generateMasteryReport(masteryStatuses);
+    result += "\n";
+  }
+
+  // Get recommendation
+  const recommendation = recommendNextConcept(masteredSet);
+
+  if (!recommendation) {
+    result += `\n# 🎉 All Concepts Mastered!\n\n`;
+    result += `You've mastered all ${Object.keys(CONCEPT_GRAPH).length} core CS concepts.\n`;
+    result += `Continue strengthening through advanced projects and specialized topics.\n`;
+    return result;
+  }
+
+  const nextConcept = getConceptNode(recommendation.conceptId);
+  if (!nextConcept) {
+    return "Error: Could not find recommended concept";
+  }
+
+  result += `\n# Next Concept to Master\n\n`;
+  result += `## ${nextConcept.name}\n\n`;
+  result += `**Why This Concept?** ${recommendation.reason}\n\n`;
+  result += `**Description:** ${nextConcept.description}\n\n`;
+  result += `**Difficulty:** ${nextConcept.difficulty}\n\n`;
+
+  if (nextConcept.prerequisites.length > 0) {
+    result += `**Prerequisites (already mastered!):**\n`;
+    for (const prereqId of nextConcept.prerequisites) {
+      const prereq = getConceptNode(prereqId);
+      if (prereq) {
+        result += `  ✓ ${prereq.name}\n`;
+      }
+    }
+    result += `\n`;
+  }
+
+  result += `**Next Steps:**\n`;
+  result += `1. Hunt for issues related to "${nextConcept.name}"\n`;
+  result += `2. Use \`get_strategy\` to learn debugging approaches\n`;
+  result += `3. Work through bugs and mark them in LESSONS.md\n`;
+  result += `4. Return here once mastered to find the next concept\n`;
+
+  // Show what this unlocks
+  const dependents = Object.entries(CONCEPT_GRAPH)
+    .filter(([_, node]) => node.prerequisites.includes(recommendation.conceptId))
+    .map(([_, node]) => node.name);
+
+  if (dependents.length > 0) {
+    result += `\n**This Concept Unlocks:**\n`;
+    dependents.slice(0, 5).forEach((name) => {
+      result += `  → ${name}\n`;
+    });
+    if (dependents.length > 5) {
+      result += `  → ... and ${dependents.length - 5} more\n`;
+    }
+  }
+
+  return result;
+}
+
+/**
  * Main server setup
  */
 const server = new Server(
@@ -2252,6 +2519,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case "get_strategy":
         result = await getStrategyForCategory(args as any);
+        break;
+      case "show_graph":
+        result = await showGraph(args as any);
+        break;
+      case "next_bug":
+        result = await nextBug(args as any);
         break;
       default:
         result = `Unknown tool: ${name}`;
