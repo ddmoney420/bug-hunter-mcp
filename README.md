@@ -1,43 +1,143 @@
 ```
-    ____    __  __   ______           __  __   __  __    _   __  ______    ______    ____
-   / __ )  / / / /  / ____/          / / / /  / / / /   / | / / /_  __/   / ____/   / __ \
-  / __  | / / / /  / / __           / /_/ /  / / / /   /  |/ /   / /     / __/     / /_/ /
- / /_/ / / /_/ /  / /_/ /          / __  /  / /_/ /   / /|  /   / /     / /___    / _, _/
-/_____/  \____/   \____/          /_/ /_/   \____/   /_/ |_/   /_/     /_____/   /_/ |_|
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃     ____    __  __   ______           __  __   __  __    _   __  ______    ______    ____  ┃
+┃    / __ )  / / / /  / ____/          / / / /  / / / /   / | / / /_  __/   / ____/   / __ \ ┃
+┃   / __  | / / / /  / / __           / /_/ /  / / / /   /  |/ /   / /     / __/     / /_/ / ┃
+┃  / /_/ / / /_/ /  / /_/ /          / __  /  / /_/ /   / /|  /   / /     / /___    / _, _/  ┃
+┃ /_____/  \____/   \____/          /_/ /_/   \____/   /_/ |_/   /_/     /_____/   /_/ |_|   ┃
+┃                                                                                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ```
 
 > *"Become the open source champion you were meant to be"* (⌐■_■)
 
-An MCP server that automates hunting, analyzing, and solving open source issues.
-Powered by [Chant](https://github.com/lex00/chant) for spec-driven development and [Moji](https://github.com/ddmoney420/moji) for styled terminal output.
+An MCP server that teaches you to fix open source bugs by doing. Hunt issues, learn concepts, track progress, earn achievements.
 
-```bash
-# See this banner in full neon glory:
-moji banner "BUG HUNTER" --font slant --gradient neon
-```
+**100% Local** - All data stays on your machine. Only GitHub API calls for issue hunting.
 
 ---
 
-## Features (ノ◕ヮ◕)ノ*:・゚✧
+```
+  _   _   _   _   _   _   _____
+ | | | | | | | | | \ | | |_   _|
+ | |_| | | | | | |  \| |   | |
+ |  _  | | |_| | | |\  |   | |
+ |_| |_|  \___/  |_| \_|   |_|
+```
 
-### Core Tools
-
-| Tool | Description |
-|:-----|:------------|
-| `hunt_issues` | Find good first issues matching your skills |
-| `analyze_repo` | Clone and analyze repository structure |
-| `scaffold_solution` | Generate starter implementation for an issue |
-| `claim_issue` | Comment on an issue to claim it |
-
-### Chant Integration Tools
+## Hunt (4 tools)
 
 | Tool | Description |
 |:-----|:------------|
-| `generate_chant_spec` | Generate a Chant driver spec from an issue |
-| `chant_init` | Initialize Chant in a cloned repository |
-| `chant_list` | List all Chant specs with status |
-| `chant_show` | Show details of a specific spec |
-| `research_workflow` | Run the full research → implementation workflow |
+| `hunt_issues` | Find good first issues by language, keywords, stars |
+| `analyze_repo` | Clone and study codebase structure |
+| `scaffold_solution` | Generate starter code for a fix |
+| `scaffold_reproduce_environment` | Auto-generate Dockerfile for any tech stack |
+| `claim_issue` | Comment on GitHub to claim it |
+
+---
+
+```
+  _       _____      _      ____    _   _
+ | |     | ____|    / \    |  _ \  | \ | |
+ | |     |  _|     / _ \   | |_) | |  \| |
+ | |___  | |___   / ___ \  |  _ <  | |\  |
+ |_____| |_____| /_/   \_\ |_| \_\ |_| \_|
+```
+
+## Learn (10 tools)
+
+### Concept Graph
+| Tool | Description |
+|:-----|:------------|
+| `show_graph` | 26 CS concepts with prerequisites (ASCII dependency graph) |
+| `next_bug` | Personalized "what to learn next" based on mastery |
+| `filter_lessons` | Search lessons by difficulty/concept tags |
+| `get_strategy` | 10 issue categories with debugging strategies |
+
+### Lessons
+| Tool | Description |
+|:-----|:------------|
+| `new_lesson` | Generate lesson template (4 sections) |
+| `validate_lesson` | Check lesson structure |
+
+### Quizzes & Retention
+| Tool | Description |
+|:-----|:------------|
+| `validate_quiz` | Validate quiz structure |
+| `validate_quiz_answers` | Score quiz, track pass/fail |
+| `record_quiz_attempt` | Save results to profile |
+| `get_concept_retention` | See weak/strong concepts, pass rates |
+
+---
+
+```
+   ____   ____     ___   __        __
+  / ___| |  _ \   / _ \  \ \      / /
+ | |  _  | |_) | | | | |  \ \ /\ / /
+ | |_| | |  _ <  | |_| |   \ V  V /
+  \____| |_| \_\  \___/     \_/\_/
+```
+
+## Grow (1 tool)
+
+| Tool | Description |
+|:-----|:------------|
+| `get_player_profile` | Stats, 20+ achievements, streaks, concept mastery |
+
+### Achievements
+- **Race Condition Slayer** - Fix 3 concurrency bugs
+- **Memory Expert** - Master memory management
+- **Cross-Language Hunter** - Fix bugs in 3+ languages
+- **Quiz Master** - Pass 10 quizzes
+- *...and 16 more*
+
+---
+
+## Chant Integration (5 tools)
+
+| Tool | Description |
+|:-----|:------------|
+| `generate_chant_spec` | Create spec from GitHub issue |
+| `chant_init` | Initialize Chant in a repo |
+| `chant_list` | List all specs |
+| `chant_show` | Show spec details |
+| `research_workflow` | Full research → implementation flow |
+
+---
+
+## The Workflow
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                                                                         │
+│   1. HUNT                        2. REPRODUCE                           │
+│   ┌──────────────┐               ┌─────────────────────────────┐        │
+│   │ hunt_issues  │ ──────────▶   │ scaffold_reproduce_env      │        │
+│   └──────────────┘               └─────────────────────────────┘        │
+│         │                                    │                          │
+│         ▼                                    ▼                          │
+│   3. LEARN                       4. FIX                                 │
+│   ┌──────────────┐               ┌─────────────────────────────┐        │
+│   │ get_strategy │               │ scaffold_solution           │        │
+│   │ show_graph   │               │ (your code here)            │        │
+│   └──────────────┘               └─────────────────────────────┘        │
+│         │                                    │                          │
+│         ▼                                    ▼                          │
+│   5. VALIDATE                    6. SHARE                               │
+│   ┌──────────────┐               ┌─────────────────────────────┐        │
+│   │ run tests    │               │ Open issue, link branch     │        │
+│   │ take quiz    │               │ Let maintainer invite PR    │        │
+│   └──────────────┘               └─────────────────────────────┘        │
+│         │                                                               │
+│         ▼                                                               │
+│   7. GROW                                                               │
+│   ┌──────────────────────────────────────────────────────────┐          │
+│   │ get_player_profile  →  achievements, streaks, mastery    │          │
+│   └──────────────────────────────────────────────────────────┘          │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -47,20 +147,20 @@ moji banner "BUG HUNTER" --font slant --gradient neon
 cd ~/Developer/bug-hunter-mcp
 npm install
 npm run build
+npm test  # 119 tests
 ```
 
 ---
 
 ## Setup
 
-### 1. Set GitHub Token
+### 1. GitHub Token
 
 ```bash
 export GITHUB_TOKEN="your_github_token"
 ```
 
-Get a token from: https://github.com/settings/tokens
-Required scopes: `repo`, `read:org`
+Get one at: https://github.com/settings/tokens (scopes: `repo`, `read:org`)
 
 ### 2. Add to Claude Code
 
@@ -71,11 +171,9 @@ Add to `~/.claude/settings.json`:
   "mcpServers": {
     "bug-hunter": {
       "command": "node",
-      "args": ["/Users/YOUR_USERNAME/Developer/bug-hunter-mcp/dist/index.js"],
+      "args": ["/path/to/bug-hunter-mcp/dist/index.js"],
       "env": {
-        "GITHUB_TOKEN": "your_github_token",
-        "CHANT_BIN": "/Users/YOUR_USERNAME/Developer/chant/target/release/chant",
-        "MOJI_BIN": "moji"
+        "GITHUB_TOKEN": "your_github_token"
       }
     }
   }
@@ -85,242 +183,84 @@ Add to `~/.claude/settings.json`:
 ### 3. Restart Claude Code
 
 ```bash
-/mcp  # Verify servers are loaded
+/mcp  # Verify server loaded
 ```
 
 ---
 
-## The Workflow ◝(ᵔᵕᵔ)◜
+## Data Storage
+
+All local, no cloud:
 
 ```
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃                                                                        ┃
-┃   ╔═══════════════╗                                                    ┃
-┃   ║  HUNT ISSUES  ║  Find a good issue to work on                      ┃
-┃   ╚═══════╤═══════╝                                                    ┃
-┃           │                                                            ┃
-┃           ▼                                                            ┃
-┃   ╔═══════════════╗                                                    ┃
-┃   ║ ANALYZE REPO  ║  Clone and understand the codebase                 ┃
-┃   ╚═══════╤═══════╝                                                    ┃
-┃           │                                                            ┃
-┃           ▼                                                            ┃
-┃   ╔═══════════════════╗                                                ┃
-┃   ║ RESEARCH WORKFLOW ║  Create research + implementation specs        ┃
-┃   ╚═══════╤═══════════╝                                                ┃
-┃           │                                                            ┃
-┃           ▼                                                            ┃
-┃   ╔═══════════════╗                                                    ┃
-┃   ║  CHANT WORK   ║  AI agents execute specs                           ┃
-┃   ╚═══════╤═══════╝                                                    ┃
-┃           │                                                            ┃
-┃           ▼                                                            ┃
-┃   ╔═══════════════╗                                                    ┃
-┃   ║  CLAIM ISSUE  ║  Comment on the issue to claim it                  ┃
-┃   ╚═══════╤═══════╝                                                    ┃
-┃           │                                                            ┃
-┃           ▼                                                            ┃
-┃   ╔═══════════════╗                                                    ┃
-┃   ║  GH PR CREATE ║  Submit your PR                                    ┃
-┃   ╚═══════════════╝                                                    ┃
-┃                                                                        ┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+~/.bug-hunter/
+└── profiles/
+    └── your-name.json    # Stats, achievements, quiz history
+
+~/Developer/bug-hunter-mcp/
+├── LESSONS.md            # Bug lessons with quizzes
+├── RESEARCH.md           # Platform research
+└── ROADMAP.md            # Feature roadmap
 ```
 
 ---
 
-## Usage Examples
+## Concept Graph
 
-### Hunt for Issues ψ(｀∇´)ψ
-
-```
-Find good first issues in Zig projects
-```
+26 CS concepts with prerequisites:
 
 ```
-Hunt for TypeScript CLI issues with at least 500 stars
+┌─ BEGINNER ────────────────────────────────────────────┐
+│ Basic Types → Control Flow → Functions                │
+└───────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─ INTERMEDIATE ────────────────────────────────────────┐
+│ Memory Management → Pointers → Data Structures        │
+│ Type Systems → Pattern Matching → Error Handling      │
+│ Async/Await → Testing → Debugging                     │
+└───────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─ ADVANCED ────────────────────────────────────────────┐
+│ Concurrency → Atomics → Locks → Race Conditions       │
+│ Optimization → Performance Bottleneck                 │
+│ Garbage Collection → Memory Leak → Deadlock           │
+└───────────────────────────────────────────────────────┘
 ```
 
-### Analyze a Repo (◕‿◕)
-
-```
-Analyze the zigtools/zls repository
-```
-
-```
-Analyze wailsapp/wails and focus on issue #3782
-```
-
-### Research Workflow ✧･ﾟ: *✧
-
-```
-Run the research workflow for zigtools/zls issue #2098
-```
-
-This creates:
-1. **Research spec** - Investigate the codebase, document findings
-2. **Implementation spec** - Depends on research, executes the solution
-
-### Chant Tools (⌐■_■)
-
-```
-Initialize chant in zigtools/zls
-```
-
-```
-List all specs in zigtools/zls
-```
-
-```
-Show spec 2026-01-29-001-abc in zigtools/zls
-```
-
-### Claim an Issue (｀・ω・´)
-
-```
-Claim issue #2098 on zigtools/zls
-```
+Use `show_graph` to see full visualization, `next_bug` for recommendations.
 
 ---
 
-## Chant Integration
+## Issue Taxonomy
 
-Bug Hunter deeply integrates with [Chant](https://github.com/lex00/chant) for spec-driven development.
+10 bug categories with debugging strategies:
 
-```bash
-# See the chant banner in rainbow:
-moji banner "CHANT" --font small --gradient rainbow
-```
+| Category | Strategies |
+|:---------|:-----------|
+| `race-condition` | Logging, thread sanitizer, lock review |
+| `memory-leak` | Heap profiling, allocation tracking |
+| `incorrect-logic` | Test isolation, input fuzzing |
+| `api-incompatibility` | Version check, docs comparison |
+| `type-mismatch` | Type inference, conversion audit |
+| `null-reference` | Null checks, optional chaining |
+| `performance-bottleneck` | Profiling, flame graphs |
+| `encoding-error` | Hex inspection, charset detection |
+| `deadlock` | Lock ordering, timeout detection |
+| `assertion-error` | Invariant checks, precondition review |
 
-### What is Chant?
-
-Chant is a spec execution platform where AI agents implement markdown specifications:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  SPEC.md                                                    │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │ ---                                                   │  │
-│  │ type: research                                        │  │
-│  │ status: pending                                       │  │
-│  │ informed_by:                                          │  │
-│  │ - src/                                                │  │
-│  │ ---                                                   │  │
-│  │ # Research: Fix Authentication Bug                    │  │
-│  │                                                       │  │
-│  │ ## Research Questions                                 │  │
-│  │ - [ ] What files handle auth?                         │  │
-│  │ - [ ] What patterns are used?                         │  │
-│  └───────────────────────────────────────────────────────┘  │
-│                            │                                │
-│                            ▼                                │
-│                    ┌──────────────┐                         │
-│                    │ chant work   │                         │
-│                    └──────────────┘                         │
-│                            │                                │
-│                            ▼                                │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │ RESEARCH_123.md                                       │  │
-│  │ - Relevant files: src/auth/*.ts                       │  │
-│  │ - Pattern: middleware chain                           │  │
-│  │ - Recommended approach: ...                           │  │
-│  └───────────────────────────────────────────────────────┘  │
-│                            │                                │
-│                            ▼                                │
-│                    ┌──────────────┐                         │
-│                    │ impl spec    │ (depends_on: research)  │
-│                    └──────────────┘                         │
-│                            │                                │
-│                            ▼                                │
-│                     ┌────────────┐                          │
-│                     │  PR Ready  │                          │
-│                     └────────────┘                          │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Research Workflow
-
-The `research_workflow` tool implements [Chant's enterprise research workflow](https://github.com/lex00/chant/tree/main/docs/guides/enterprise/research-workflow):
-
-1. **Investigation Phase** - Research spec with `informed_by:` to analyze codebase
-2. **Implementation Phase** - Code spec with `depends_on:` for ordered execution
-
----
-
-## Moji Integration
-
-Bug Hunter uses [Moji](https://github.com/ddmoney420/moji) for styled terminal output with kaomojis and ASCII banners.
-
-```bash
-# Main banner
-moji banner "BUG HUNTER" --font slant --gradient neon
-
-# Workflow steps
-moji banner "HUNT" --font small --gradient fire
-moji banner "ANALYZE" --font small --gradient neon
-moji banner "CHANT" --font small --gradient rainbow
-
-# Celebratory kaomojis
-moji happy           # (◕‿◕)
-moji cool            # (⌐■_■)
-moji magic           # (ノ◕ヮ◕)ノ*:・゚✧
-moji shrug           # ¯\_(ツ)_/¯
-```
-
----
-
-## Directory Structure
-
-```
-~/Developer/
-├── bug-hunter-repos/           # Cloned repositories
-│   └── owner/
-│       └── repo/
-│           ├── .chant/
-│           │   └── specs/      # Generated Chant specs
-│           └── RESEARCH_*.md   # Research findings
-├── bug-hunter-mcp/             # This MCP server
-├── chant/                      # Chant CLI
-└── moji/                       # Moji CLI (optional)
-```
-
----
-
-## Environment Variables
-
-| Variable | Description | Default |
-|:---------|:------------|:--------|
-| `GITHUB_TOKEN` | GitHub API token | Required |
-| `CHANT_BIN` | Path to chant binary | `~/Developer/chant/target/release/chant` |
-| `MOJI_BIN` | Path to moji binary | `moji` |
+Use `get_strategy {category: "race-condition"}` for full details.
 
 ---
 
 ## Credits (ノ◕ヮ◕)ノ*:・゚✧
 
-Bug Hunter MCP is built with and powered by:
+### [Chant](https://github.com/lex00/chant) by [lex00](https://github.com/lex00)
+> Spec-driven development platform
 
-### [Chant](https://github.com/lex00/chant)
-> *Spec-driven development platform*
-
-Chant enables AI agents to implement markdown specifications with:
-- Research workflows for codebase investigation
-- Dependency-ordered spec execution
-- Parallel agent orchestration
-- Git worktree isolation
-
-**Created by:** [lex00](https://github.com/lex00)
-
-### [Moji](https://github.com/ddmoney420/moji)
-> *Terminal styling and kaomojis*
-
-Moji provides:
-- ASCII art banners with gradient colors
-- Kaomoji lookup and generation
-- Text effects and filters
-- Image to ASCII conversion
-
-**Created by:** [ddmoney420](https://github.com/ddmoney420)
+### [Moji](https://github.com/ddmoney420/moji) by [ddmoney420](https://github.com/ddmoney420)
+> Terminal styling and kaomojis
 
 ---
 
@@ -331,7 +271,5 @@ MIT
 ---
 
 <p align="center">
-<strong>Built for the altruistic open source champion lifestyle.</strong>
-<br><br>
 <code>(ノ◕ヮ◕)ノ*:・゚✧ Happy Hunting! ✧･ﾟ:*ヽ(◕ヮ◕ヽ)</code>
 </p>
